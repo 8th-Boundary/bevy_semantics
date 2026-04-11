@@ -1,0 +1,13 @@
+/target/
+**/target/
+
+.vscode/
+.claude/
+
+.DS_Store
+Thumbs.db
+
+/nul
+
+*.profraw
+*.profdata

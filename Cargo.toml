@@ -1,0 +1,31 @@
+[package]
+name = "bevy_semantics"
+version = "0.1.0"
+edition = "2021"
+description = "Semantic identity, ontology, and query infrastructure for Bevy"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+publish = false
+keywords = ["bevy", "semantics", "ontology", "graph"]
+categories = ["game-development"]
+
+[dependencies]
+blake3 = "1"
+bevy_app = "0.18.1"
+bevy_ecs = "0.18.1"
+bevy_reflect = "0.18.1"
+bevy_platform = "0.18.1"
+bevy_tasks = "0.18.1"
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = true }
+
+[[example]]
+name = "basic"
+
+[[example]]
+name = "task_playback"
+
+[[bench]]
+name = "semantics_bench"
+harness = false
