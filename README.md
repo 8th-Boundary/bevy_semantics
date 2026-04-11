@@ -1,50 +1,59 @@
 # bevy_semantics
 
-`bevy_semantics` adds a semantic layer to Bevy: stable kinds, labeled relations, immutable snapshots, and cached graph queries.
+`bevy_semantics` is a high-level semantic layer for Bevy and Rust projects.
+It maps abstract concepts to stable kinds and records how those concepts relate.
+It is not the definition of a thing, and it is not a runtime instance of a thing.
 
-Semantics is the meaning layer above raw ECS data. An ontology graph is the directed labeled graph that stores that meaning: kinds are nodes, relations are edge labels, and edges connect those labels into a graph you can query.
+An ontology graph is the directed graph that stores that meaning:
+- kinds are the nodes
+- relations are kinds used as edge labels
+- edges connect a subject kind, relation kind, and target kind
 
-Use this crate when you want to ask questions like:
-- what kind is this?
+Use this crate when you want to answer questions like:
+- what is this concept?
 - what does it inherit from?
 - what does it prey on?
 - what does it drop?
 - where does it grow?
 
-The crate is organized around a few small pieces:
-- `SemanticRegistry` for mutable authoring
-- `Semantics` for the Bevy-facing resource
-- `SemanticEdit` for fluent bulk edits
-- `SemanticSnapshot` for immutable reads and background work
-- `SemanticPlaybackQueue` for off-thread command playback
-- `CommandsExt` for staging semantic commands from Bevy systems
+## What This Crate Gives You
 
-## Core Model
+- stable semantic identities
+- optional typed kinds
+- a read-optimized ontology graph
+- immutable snapshots for concurrent reads
+- query compilation and caching
+- built-in Bevy integration in the default build
+
+## Core Ideas
 
 ### Kind
 
-A `Kind` is a stable semantic identity.
+A `Kind` is a stable semantic identifier for a concept.
 
-- It is an opaque public ID, not a string.
-- It is derived from a canonical name.
-- It is cheap to copy and safe to store in game data.
-- `DenseKind` is internal only and never appears in the public API.
+- it is opaque, not a string
+- it is derived from a canonical name
+- it is cheap to copy and safe to store in game data
+- it names a concept, not an entity instance
 
-In practice, a kind is the semantic handle for a concept like `Wolf`, `preys_on`, or `Forest`.
+Examples:
+- `Wolf`
+- `preys_on`
+- `Forest`
 
 ### Relation
 
-A relation is the label on an edge.
+A relation is just a kind used in the relation slot of an edge.
 
-- In storage, a relation is also a `Kind`.
-- The builtin `Relation` kind marks relation kinds as part of the schema.
-- Custom relations are just normal kinds that you register and then use as labels.
+- relations are not a separate storage type
+- relation kinds are normal kinds
+- the core `Relation` kind marks kinds that are intended for use as edge labels
 
-For example, `preys_on` is a relation kind, and `Wolf preys_on Rabbit` is an edge that uses it.
+In other words, `preys_on` is both a kind and a relation label.
 
 ### Edge
 
-An edge is a semantic triple:
+An edge is a semantic triple, with optional scalar metadata:
 
 ```rust
 struct SemanticEdge {
@@ -55,81 +64,59 @@ struct SemanticEdge {
 }
 ```
 
-- `subject`, `relation`, and `target` identify the edge.
-- `weight` is optional.
-- Unweighted edges are the default.
-- `Weight` is a signed `i64` newtype for scalar payloads.
+- `subject`, `relation`, and `target` identify the edge
+- `weight` is optional
+- unweighted edges are the default
+- `Weight` is a signed `i64` newtype
 
-### Storage
+### Storage Model
 
-The registry owns the mutable source of truth.
+The crate splits mutation and read access:
 
-- `SemanticRegistry` stores names, typed bindings, and canonical edge data.
-- `SemanticSnapshot` turns that data into a read-optimized, immutable view.
-- The snapshot uses internal dense indices and adjacency views for fast reads.
-- Public code never sees the dense index type directly.
+- `SemanticRegistry` is the mutable source of truth
+- `SemanticSnapshot` is the immutable read model
+- `Semantics` is the Bevy-facing resource that wraps both
 
-The short version:
-- mutate through the registry
-- read through the snapshot or the `Semantics` facade
-- keep dense storage hidden behind the API
+The snapshot is built from the registry and uses dense internal indexing for reads.
+Public code never sees the dense index type.
 
-## API At A Glance
+## API Overview
 
 ### `SemanticRegistry`
 
-Use this when you are authoring outside Bevy or building setup code directly.
+Use this when authoring outside Bevy or in setup code.
 
 Main methods:
 - `register_kind(name)`
-- `register_typed_kind::<T>()`
-- `register_typed_kind_named::<T>(name)`
+- `typed_kind::<T>()`
+- `typed_kind_named::<T>(name)`
 - `unregister_kind(kind)`
+- `unregister_namespace(namespace)`
 - `add_edge(subject, relation, target)`
 - `add_edge_weighted(subject, relation, target, weight)`
 - `remove_edge(subject, relation, target)`
 - `batch()`
-- `apply_commands(...)`
-- `ensure_builtins()`
+- `apply_commands(commands)`
+- `core()`
+- `kind(name)`
+- `kind_of::<T>()`
+- `name(kind)`
+- `type_id(kind)`
 - `snapshot()`
 - `snapshot_cached()`
 
-`batch()` is for bulk authoring when you want a write-heavy pass to commit once at the end.
+`batch()` is for bulk authoring when you want to stage many writes and rebuild once at the end.
 
 ### `Semantics`
 
-Use this as the Bevy resource.
+Use this as `Res<Semantics>` or `ResMut<Semantics>` in Bevy.
 
-- `Res<Semantics>` is the read side.
-- `ResMut<Semantics>` is the write side.
-- Direct reads live here: `kind`, `kind_of`, `name`, `builtins`.
-- Graph reads live here too: `is_a`, `targets`, `subjects`, `neighbors`, `reachable`, `can_reach`.
-- Direct writes live here as well: `register_kind`, `register_typed_kind`, `register_typed_kind_named`, `unregister_kind`, `add_edge`, `add_edge_weighted`, `remove_edge`.
-- `snapshot()` returns the cached immutable read model.
-
-Tiny write sketch:
-
-```rust
-let creature = semantics.register_kind("Creature")?;
-let wolf = semantics.register_typed_kind_named::<Wolf>("Wolf")?;
-let preys_on = semantics.register_kind("preys_on")?;
-semantics.add_edge(wolf, preys_on, rabbit)?;
-```
-
-### `SemanticEdit`
-
-Use this for fluent bulk authoring when you want one chained write pass.
-
-It supports:
-- `register_kind`
-- `register_typed_kind`
-- `register_typed_kind_named`
-- `unregister_kind`
-- `add_edge`
-- `add_edge_weighted`
-- `remove_edge`
-- `expect(...)`
-- `finish()`
+- `Res<Semantics>` is the read side
+- `ResMut<Semantics>` is the write side
+- direct reads live here: `kind`, `kind_of`, `name`, `core`
+- graph reads live here too: `is_a`, `targets`, `subjects`, `neighbors`, `reachable`, `can_reach`, `has_edge`
+- direct writes live here: `register_kind`, `typed_kind`, `typed_kind_named`, `unregister_kind`, `unregister_namespace`, `add_edge`, `add_edge_weighted`, `remove_edge`
+- `snapshot()` returns the cached immutable read model for background work
 
 Example shape:
 
@@ -138,17 +125,37 @@ semantics
     .edit()
     .register_kind("preys_on")
     .register_kind("predated_by")
+    .typed_kind_named::<Wolf>("Wolf")
+    .add_edge(wolf, preys_on, rabbit)
     .add_edge_weighted(wolf, damage, rabbit, Weight::from(7))
     .expect("seed semantic schema");
 ```
+
+### `SemanticEdit`
+
+Use this for fluent bulk authoring.
+
+It supports:
+- `register_kind`
+- `typed_kind`
+- `typed_kind_named`
+- `unregister_kind`
+- `unregister_namespace`
+- `add_edge`
+- `add_edge_weighted`
+- `remove_edge`
+- `expect(...)`
+- `finish()`
 
 ### `SemanticSnapshot`
 
 Use this for stable read-only work.
 
-- It can be cloned into background tasks.
-- It is the right surface for compiled queries and longer-lived read work.
-- It is immutable once created.
+- it is immutable
+- it can be cloned into background tasks
+- it is the right surface for compiled queries
+- direct reads do not need a snapshot
+- background tasks do
 
 Call `semantics.snapshot()` when you need a cloned read model.
 
@@ -156,9 +163,10 @@ Call `semantics.snapshot()` when you need a cloned read model.
 
 Use this when a background task produces semantic commands that should be replayed later on the main thread.
 
-- A task can read a snapshot.
-- The task can derive `SemanticCommand` values.
-- A main-thread system can enqueue and play them back later.
+- a task reads a snapshot
+- the task derives `SemanticCommand` values
+- a main-thread system enqueues them
+- the plugin replays them later
 
 See `examples/task_playback.rs` for the full flow.
 
@@ -166,30 +174,40 @@ See `examples/task_playback.rs` for the full flow.
 
 Use this when you want to stage semantic edits from ordinary Bevy systems.
 
-- It queues semantic commands through Bevy `Commands`.
-- The plugin drains and applies them later.
-- It is the easiest way to keep semantic authoring inside a Bevy schedule.
+- it queues semantic commands through Bevy `Commands`
+- the plugin drains and applies them later
+- it is the easiest way to keep semantic authoring inside a Bevy schedule
 
-## Builtins
+## Core
 
-The registry seeds a small set of canonical kinds and relations automatically.
+The crate seeds a small set of core kinds automatically.
+User code does not need to call an "ensure core" function.
 
-Read them from `semantics.builtins()` or `ensure_builtins()`.
+The crate reserves the `Core` namespace for itself, but the seeded core kinds use plain names:
 
-| Builtin | Use case |
+| Core kind | Use case |
 | --- | --- |
-| `Relation` | Meta-kind for relation kinds themselves. Use it to make custom relations part of the schema. |
-| `Namespace` | Reserved grouping kind for names and ownership. Useful for plugin, module, and content boundaries. |
-| `is_a` | Taxonomy, inheritance, and required-component style hierarchies. |
-| `not_a` | Explicit exclusion or disjoint categories. |
-| `can_be` | Positive capability, affordance, or allowed classification. |
-| `cant_be` | Negative capability or disallowed classification. |
-| `has_part` | Composition from whole to part. |
-| `part_of` | Inverse composition from part to whole. |
-| `inverse_of` | Declare that two relations are inverses. |
-| `negates` | Declare logical opposites such as `is_a` vs `not_a`. |
+| `Relation` | Marks relation kinds as part of the schema |
+| `Namespace` | Reserved grouping kind for names and ownership |
+| `is_a` | Taxonomy, inheritance, and required-component style hierarchies |
+| `not_a` | Explicit exclusion or disjoint categories |
+| `can_be` | Positive capability, affordance, or allowed classification |
+| `cant_be` | Negative capability or disallowed classification |
+| `has_part` | Composition from whole to part |
+| `part_of` | Inverse composition from part to whole |
+| `inverse_of` | Declare that two relations are inverses |
+| `negates` | Declare logical opposites such as `is_a` vs `not_a` |
 
-In practice, you usually seed builtins once and keep the returned handles around.
+Core facts are seeded automatically:
+- every relation kind `is_a Relation`
+- `has_part inverse_of part_of`
+- `part_of inverse_of has_part`
+- `is_a negates not_a`
+- `not_a negates is_a`
+- `can_be negates cant_be`
+- `cant_be negates can_be`
+
+The `Core` namespace is reserved and cannot be removed, in any case variant.
 
 ## Example World
 
@@ -206,7 +224,8 @@ Custom demo relations:
 - `drops` / `dropped_by`
 - `grows_in`
 
-These custom relations are not builtins. Register them like any other kind, mark them `is_a Relation`, and couple the pairs with `inverse_of`.
+These custom relations are not core kinds.
+Register them like any other kind, optionally classify them under `Relation`, and couple the paired relations with `inverse_of`.
 
 If you want a full end-to-end example, see `examples/basic.rs`.
 
@@ -235,21 +254,36 @@ In that case, keep the semantic relation kind as the stable label and let the en
 
 ## Benchmarks
 
-The crate includes Criterion benches under `bevy_semantics/benches/semantics_bench.rs` for:
+### Hardware and Tooling
 
-- snapshot build
-- cached snapshot retrieval
-- bulk authoring
-- kind lookup
-- direct taxonomy checks
-- dynamic and compiled edge queries
-- dynamic and compiled traversal queries
-- task-style command derivation
-- queued command playback
+- CPU: 13th Gen Intel Core i7-13700K
+- cores: 16 physical, 24 logical
+- memory: 32.0 GiB
+- OS: Windows 11 Pro 64-bit, build 26200
+- Rust: `rustc 1.91.1 (ed61e7d7e 2025-11-07)`
+- target: `x86_64-pc-windows-msvc`
+
+### Latest Criterion Results
+
+Measured with `cargo bench -p bevy_semantics --bench semantics_bench` on the machine above after the API cleanup pass.
+
+| Benchmark | Time |
+| --- | --- |
+| `semantics_snapshot_build_4k` | `1.0560 ms - 1.0873 ms` |
+| `semantics_snapshot_cached_4k` | `16.301 ns - 16.567 ns` |
+| `semantics_bulk_authoring_4k` | `2.0926 ms - 2.1538 ms` |
+| `semantics_lookup_kind_by_name` | `6.1803 ns - 6.4976 ns` |
+| `semantics_is_a_direct` | `34.189 ns - 34.429 ns` |
+| `semantics_edge_query_dynamic` | `47.730 ns - 48.824 ns` |
+| `semantics_edge_query_compiled` | `34.345 ns - 35.166 ns` |
+| `semantics_traversal_dynamic` | `52.202 ns - 54.122 ns` |
+| `semantics_traversal_compiled` | `37.500 ns - 37.934 ns` |
+| `semantics_task_command_derivation_4k` | `283.97 ns - 287.82 ns` |
+| `semantics_task_command_playback_4k` | `37.739 us - 40.944 us` |
 
 ## Notes
 
 - `Kind` and `Weight` are opaque newtypes, not type aliases.
 - Relations are unweighted by default. Use weighted edges only when the scalar matters.
-- Built-in kinds are protected. `unregister_kind` removes user kinds, their incident edges, and any typed binding, but built-ins cannot be removed.
+- Core kinds are protected. `unregister_kind` removes user kinds, their incident edges, and any typed binding, but core kinds cannot be removed.
 - The crate favors deterministic results and cached reads over write-side sophistication.

@@ -11,7 +11,7 @@ use crate::kind::Kind;
 use crate::query::{
     CompiledEdgeQuery, CompiledTraversalQuery, EdgeQueryBuilder, TraversalQueryBuilder,
 };
-use crate::registry::{Builtins, SemanticRegistry};
+use crate::registry::{Core, SemanticRegistry};
 use crate::{SemanticEdge, Weight};
 
 const EMPTY_KINDS: [Kind; 0] = [];
@@ -24,7 +24,7 @@ pub struct SemanticSnapshot {
     kind_by_name: HashMap<ArcStrKey, Kind>,
     name_by_kind: HashMap<Kind, ArcStrKey>,
     type_by_kind: HashMap<Kind, TypeId>,
-    builtins: Builtins,
+    core: Core,
     is_a_cache: Arc<RwLock<HashMap<Kind, Vec<Kind>>>>,
     edge_query_cache: Arc<RwLock<HashMap<EdgeQueryBuilder, Arc<CompiledEdgeQuery>>>>,
     traversal_query_cache: Arc<RwLock<HashMap<TraversalQueryBuilder, Arc<CompiledTraversalQuery>>>>,
@@ -94,7 +94,7 @@ impl SemanticSnapshot {
                 type_by_kind.insert(meta.kind, type_id);
             }
         }
-        let builtins = registry.builtins();
+        let core = registry.core();
 
         let mut edges = registry
             .graph
@@ -144,7 +144,7 @@ impl SemanticSnapshot {
             kind_by_name,
             name_by_kind,
             type_by_kind,
-            builtins,
+            core,
             is_a_cache: Arc::new(RwLock::new(HashMap::new())),
             edge_query_cache: Arc::new(RwLock::new(HashMap::new())),
             traversal_query_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -198,9 +198,9 @@ impl SemanticSnapshot {
         self.type_by_kind.get(&kind).copied()
     }
 
-    /// Return the canonical built-in kinds and relations.
-    pub fn builtins(&self) -> Builtins {
-        self.builtins
+    /// Return the canonical core kinds and relations.
+    pub fn core(&self) -> Core {
+        self.core
     }
 
     /// Check whether an exact edge exists.
@@ -301,7 +301,7 @@ impl SemanticSnapshot {
             return true;
         }
 
-        let is_a = self.builtins.is_a;
+        let is_a = self.core.is_a;
 
         if let Some(cached) = self
             .is_a_cache

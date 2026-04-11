@@ -4,7 +4,7 @@ use std::any::{type_name, TypeId};
 use std::sync::Arc;
 use std::sync::RwLock;
 
-use bevy_platform::collections::HashMap;
+use bevy_platform::collections::{HashMap, HashSet};
 
 use crate::error::SemanticError;
 use crate::kind::Kind;
@@ -14,9 +14,9 @@ use crate::weight::Weight;
 
 type SnapshotCache = Arc<RwLock<Option<(u64, Arc<SemanticSnapshot>)>>>;
 
-/// Canonical built-in semantic kinds and relations.
+/// Canonical core semantic kinds and relations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Builtins {
+pub struct Core {
     pub relation: Kind,
     pub namespace: Kind,
     pub is_a: Kind,
@@ -33,7 +33,7 @@ pub struct Builtins {
 pub(crate) struct KindFlags(u8);
 
 impl KindFlags {
-    const BUILT_IN: Self = Self(1 << 0);
+    const CORE: Self = Self(1 << 0);
     const TYPED: Self = Self(1 << 1);
     const USER_DEFINED: Self = Self(1 << 2);
 
@@ -68,7 +68,7 @@ pub struct SemanticRegistry {
     pub(crate) name_to_kind: HashMap<Arc<str>, Kind>,
     pub(crate) type_to_kind: HashMap<TypeId, Kind>,
     pub(crate) kind_to_type: HashMap<Kind, TypeId>,
-    pub(crate) builtins: Option<Builtins>,
+    pub(crate) core: Option<Core>,
     pub(crate) graph: GraphState,
     snapshot_cache: SnapshotCache,
     bulk_depth: usize,
@@ -84,7 +84,7 @@ impl Default for SemanticRegistry {
             name_to_kind: HashMap::new(),
             type_to_kind: HashMap::new(),
             kind_to_type: HashMap::new(),
-            builtins: None,
+            core: None,
             graph: GraphState::default(),
             snapshot_cache: Arc::new(RwLock::new(None)),
             bulk_depth: 0,
@@ -92,8 +92,8 @@ impl Default for SemanticRegistry {
         };
         registry.begin_bulk_edit();
         let _ = registry
-            .ensure_builtins()
-            .expect("built-ins are static and should always seed");
+            .seed_core()
+            .expect("core kinds are static and should always seed");
         registry.end_bulk_edit();
         registry
     }
@@ -125,6 +125,11 @@ impl SemanticRegistry {
         T: 'static,
     {
         let canonical = canonicalize_name(name.as_ref())?;
+        if let Some(namespace) = reserved_namespace_root(canonical.as_ref()) {
+            return Err(SemanticError::CannotUseReservedNamespace {
+                namespace: namespace.to_string(),
+            });
+        }
         let type_id = TypeId::of::<T>();
 
         if let Some(existing_kind) = self.type_to_kind.get(&type_id).copied() {
@@ -142,28 +147,9 @@ impl SemanticRegistry {
         self.register_canonical_kind(canonical, Some(type_id), KindFlags::TYPED)
     }
 
-    fn register_builtin_kind(&mut self, name: impl AsRef<str>) -> Result<Kind, SemanticError> {
+    fn register_core_kind(&mut self, name: impl AsRef<str>) -> Result<Kind, SemanticError> {
         let canonical = canonicalize_name(name.as_ref())?;
-        self.register_canonical_kind(canonical, None, KindFlags::BUILT_IN)
-    }
-
-    /// Compatibility alias for [`SemanticRegistry::typed_kind`].
-    pub fn register_typed_kind<T>(&mut self) -> Result<Kind, SemanticError>
-    where
-        T: 'static,
-    {
-        self.typed_kind::<T>()
-    }
-
-    /// Compatibility alias for [`SemanticRegistry::typed_kind_named`].
-    pub fn register_typed_kind_named<T>(
-        &mut self,
-        name: impl AsRef<str>,
-    ) -> Result<Kind, SemanticError>
-    where
-        T: 'static,
-    {
-        self.typed_kind_named::<T>(name)
+        self.register_canonical_kind(canonical, None, KindFlags::CORE)
     }
 
     /// Look up a `Kind` by canonical name.
@@ -193,24 +179,23 @@ impl SemanticRegistry {
         self.kind_to_type.get(&kind).copied()
     }
 
-    /// Return the canonical built-in kinds and relations.
-    pub fn builtins(&self) -> Builtins {
-        self.builtins
-            .expect("built-ins are seeded during registry initialization")
+    /// Return the canonical core kinds and relations.
+    pub fn core(&self) -> Core {
+        self.core
+            .expect("core kinds are seeded during registry initialization")
     }
 
-    /// Ensure the built-in semantic kinds and relations are present and return their handles.
-    pub fn ensure_builtins(&mut self) -> Result<Builtins, SemanticError> {
-        let relation = self.register_builtin_kind("Relation")?;
-        let namespace = self.register_builtin_kind("Namespace")?;
-        let is_a = self.register_builtin_kind("is_a")?;
-        let not_a = self.register_builtin_kind("not_a")?;
-        let can_be = self.register_builtin_kind("can_be")?;
-        let cant_be = self.register_builtin_kind("cant_be")?;
-        let has_part = self.register_builtin_kind("has_part")?;
-        let part_of = self.register_builtin_kind("part_of")?;
-        let inverse_of = self.register_builtin_kind("inverse_of")?;
-        let negates = self.register_builtin_kind("negates")?;
+    fn seed_core(&mut self) -> Result<Core, SemanticError> {
+        let relation = self.register_core_kind("Relation")?;
+        let namespace = self.register_core_kind("Namespace")?;
+        let is_a = self.register_core_kind("is_a")?;
+        let not_a = self.register_core_kind("not_a")?;
+        let can_be = self.register_core_kind("can_be")?;
+        let cant_be = self.register_core_kind("cant_be")?;
+        let has_part = self.register_core_kind("has_part")?;
+        let part_of = self.register_core_kind("part_of")?;
+        let inverse_of = self.register_core_kind("inverse_of")?;
+        let negates = self.register_core_kind("negates")?;
 
         for kind in [
             relation, is_a, not_a, can_be, cant_be, has_part, part_of, inverse_of, negates,
@@ -225,7 +210,7 @@ impl SemanticRegistry {
         let _ = self.add_edge(can_be, negates, cant_be)?;
         let _ = self.add_edge(cant_be, negates, can_be)?;
 
-        let builtins = Builtins {
+        let core = Core {
             relation,
             namespace,
             is_a,
@@ -237,8 +222,8 @@ impl SemanticRegistry {
             inverse_of,
             negates,
         };
-        self.builtins = Some(builtins);
-        Ok(builtins)
+        self.core = Some(core);
+        Ok(core)
     }
 
     /// Build a fresh immutable snapshot.
@@ -301,7 +286,6 @@ impl SemanticRegistry {
     }
 
     /// Insert or update a weighted semantic edge.
-    #[doc(alias = "add_weighted_edge")]
     pub fn add_edge_weighted(
         &mut self,
         subject: Kind,
@@ -310,18 +294,6 @@ impl SemanticRegistry {
         weight: Weight,
     ) -> Result<bool, SemanticError> {
         self.upsert_edge(subject, relation, target, Some(weight))
-    }
-
-    /// Compatibility alias for [`SemanticRegistry::add_edge_weighted`].
-    #[doc(alias = "add_edge_weighted")]
-    pub fn add_weighted_edge(
-        &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: Weight,
-    ) -> Result<bool, SemanticError> {
-        self.add_edge_weighted(subject, relation, target, weight)
     }
 
     /// Unregister a kind and remove any incident edges and type bindings.
@@ -333,8 +305,8 @@ impl SemanticRegistry {
             .ok_or(SemanticError::UnknownKind { kind })?;
 
         let meta = self.kinds[index].clone();
-        if meta.flags.contains(KindFlags::BUILT_IN) {
-            return Err(SemanticError::CannotUnregisterBuiltInKind { kind });
+        if meta.flags.contains(KindFlags::CORE) {
+            return Err(SemanticError::CannotUnregisterCoreKind { kind });
         }
 
         if let Some(type_id) = meta.type_id {
@@ -354,6 +326,64 @@ impl SemanticRegistry {
         self.graph.edges.retain(|key, _| {
             let (subject, relation, target) = *key;
             subject != kind && relation != kind && target != kind
+        });
+
+        self.bump_version();
+        Ok(true)
+    }
+
+    /// Unregister every kind whose canonical name lives under the given namespace prefix.
+    pub fn unregister_namespace(
+        &mut self,
+        namespace: impl AsRef<str>,
+    ) -> Result<bool, SemanticError> {
+        let requested = namespace.as_ref();
+        if is_reserved_namespace_name(requested) {
+            return Err(SemanticError::CannotUseReservedNamespace {
+                namespace: reserved_namespace_root(requested)
+                    .unwrap_or(requested)
+                    .to_string(),
+            });
+        }
+        let prefix = canonicalize_namespace_prefix(namespace.as_ref())?;
+        let prefix = prefix.as_ref();
+
+        let mut removed_kinds = Vec::new();
+        for meta in &self.kinds {
+            if meta.name.starts_with(prefix) {
+                if meta.flags.contains(KindFlags::CORE) {
+                    return Err(SemanticError::CannotUnregisterCoreKind { kind: meta.kind });
+                }
+                removed_kinds.push(meta.kind);
+            }
+        }
+
+        if removed_kinds.is_empty() {
+            return Ok(false);
+        }
+
+        let removed_set: HashSet<Kind> = removed_kinds.iter().copied().collect();
+
+        self.kinds.retain(|meta| !removed_set.contains(&meta.kind));
+        self.kind_to_index.clear();
+        self.name_to_kind.clear();
+        self.type_to_kind.clear();
+        self.kind_to_type.clear();
+
+        for (index, meta) in self.kinds.iter().enumerate() {
+            self.kind_to_index.insert(meta.kind, index);
+            self.name_to_kind.insert(meta.name.clone(), meta.kind);
+            if let Some(type_id) = meta.type_id {
+                self.kind_to_type.insert(meta.kind, type_id);
+                self.type_to_kind.insert(type_id, meta.kind);
+            }
+        }
+
+        self.graph.edges.retain(|key, _| {
+            let (subject, relation, target) = *key;
+            !removed_set.contains(&subject)
+                && !removed_set.contains(&relation)
+                && !removed_set.contains(&target)
         });
 
         self.bump_version();
@@ -399,7 +429,7 @@ impl SemanticRegistry {
                     reason: "missing canonical name".to_string(),
                 })?;
                 let before = self.version;
-                self.register_typed_kind_command(type_id, canonical)?;
+                self.typed_kind_command(type_id, canonical)?;
                 Ok(self.version != before)
             }
             SemanticCommand::AddEdge {
@@ -411,17 +441,15 @@ impl SemanticRegistry {
                 Some(weight) => self.add_edge_weighted(subject, relation, target, weight),
                 None => self.add_edge(subject, relation, target),
             },
+            SemanticCommand::UnregisterNamespace { namespace } => {
+                self.unregister_namespace(namespace.as_ref())
+            }
             SemanticCommand::UnregisterKind { kind } => self.unregister_kind(kind),
             SemanticCommand::RemoveEdge {
                 subject,
                 relation,
                 target,
             } => self.remove_edge(subject, relation, target),
-            SemanticCommand::EnsureBuiltins => {
-                let before = self.version;
-                let _ = self.ensure_builtins()?;
-                Ok(self.version != before)
-            }
         }
     }
 
@@ -442,12 +470,17 @@ impl SemanticRegistry {
         result
     }
 
-    fn register_typed_kind_command(
+    fn typed_kind_command(
         &mut self,
         type_id: TypeId,
         name: Arc<str>,
     ) -> Result<Kind, SemanticError> {
         let canonical = canonicalize_name(name.as_ref())?;
+        if let Some(namespace) = reserved_namespace_root(canonical.as_ref()) {
+            return Err(SemanticError::CannotUseReservedNamespace {
+                namespace: namespace.to_string(),
+            });
+        }
         if let Some(existing_kind) = self.type_to_kind.get(&type_id).copied() {
             let existing_name = self.name(existing_kind).unwrap_or("<unknown>").to_string();
             if existing_name == canonical.as_ref() {
@@ -469,6 +502,14 @@ impl SemanticRegistry {
         type_id: Option<TypeId>,
         base_flags: KindFlags,
     ) -> Result<Kind, SemanticError> {
+        if !base_flags.contains(KindFlags::CORE) {
+            if let Some(namespace) = reserved_namespace_root(canonical.as_ref()) {
+                return Err(SemanticError::CannotUseReservedNamespace {
+                    namespace: namespace.to_string(),
+                });
+            }
+        }
+
         if let Some(existing_kind) = self.name_to_kind.get(canonical.as_ref()).copied() {
             if let Some(requested_type) = type_id {
                 if let Some(existing_type) = self.type_to_kind.get(&requested_type).copied() {
@@ -678,7 +719,6 @@ impl<'a> SemanticRegistryBatch<'a> {
         Ok(changed)
     }
 
-    #[doc(alias = "add_weighted_edge")]
     pub fn add_edge_weighted(
         &mut self,
         subject: Kind,
@@ -694,22 +734,20 @@ impl<'a> SemanticRegistryBatch<'a> {
         Ok(changed)
     }
 
-    /// Compatibility alias for [`SemanticRegistryBatch::add_edge_weighted`].
-    #[doc(alias = "add_edge_weighted")]
-    pub fn add_weighted_edge(
-        &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: Weight,
-    ) -> Result<bool, SemanticError> {
-        self.add_edge_weighted(subject, relation, target, weight)
-    }
-
     /// Unregister a kind and clean up all incident edges.
     pub fn unregister_kind(&mut self, kind: Kind) -> Result<bool, SemanticError> {
         let before = self.registry.version();
         let changed = self.registry.unregister_kind(kind)?;
+        self.changed |= changed || self.registry.version() != before;
+        Ok(changed)
+    }
+
+    pub fn unregister_namespace(
+        &mut self,
+        namespace: impl AsRef<str>,
+    ) -> Result<bool, SemanticError> {
+        let before = self.registry.version();
+        let changed = self.registry.unregister_namespace(namespace)?;
         self.changed |= changed || self.registry.version() != before;
         Ok(changed)
     }
@@ -724,13 +762,6 @@ impl<'a> SemanticRegistryBatch<'a> {
         let changed = self.registry.remove_edge(subject, relation, target)?;
         self.changed |= changed || self.registry.version() != before;
         Ok(changed)
-    }
-
-    pub fn ensure_builtins(&mut self) -> Result<Builtins, SemanticError> {
-        let before = self.registry.version();
-        let builtins = self.registry.ensure_builtins()?;
-        self.changed |= self.registry.version() != before;
-        Ok(builtins)
     }
 
     pub fn apply_command(&mut self, command: SemanticCommand) -> Result<bool, SemanticError> {
@@ -781,6 +812,38 @@ pub(crate) fn canonicalize_name(name: &str) -> Result<Arc<str>, SemanticError> {
         });
     }
     Ok(Arc::from(canonical))
+}
+
+pub(crate) fn canonicalize_namespace_prefix(namespace: &str) -> Result<Arc<str>, SemanticError> {
+    let canonical = canonicalize_name(namespace)?;
+    let trimmed = canonical.as_ref().trim_end_matches("::");
+    if trimmed.is_empty() {
+        return Err(SemanticError::InvalidName {
+            name: namespace.to_string(),
+        });
+    }
+    Ok(Arc::from(format!("{trimmed}::")))
+}
+
+fn reserved_namespace_root(name: &str) -> Option<&str> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let root = trimmed
+        .split_once("::")
+        .map(|(root, _)| root)
+        .unwrap_or(trimmed);
+    if root.eq_ignore_ascii_case("core") {
+        Some(root)
+    } else {
+        None
+    }
+}
+
+fn is_reserved_namespace_name(name: &str) -> bool {
+    reserved_namespace_root(name).is_some()
 }
 
 pub(crate) fn hash_canonical_name(name: &str) -> Kind {

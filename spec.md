@@ -122,8 +122,8 @@ Rules:
 Recommended form:
 - `namespace::local_name`
 
-Built-in names should live under a reserved namespace such as:
-- `bevy_semantics::builtin::*`
+The crate seeds its own core kinds with plain names such as `Relation` and `is_a`.
+The `Core` namespace is reserved for user code and cannot be used.
 
 ### 2.6 Typed Kinds
 
@@ -162,11 +162,11 @@ struct KindMeta {
 
 Implementation may keep separate internal dense remap tables.
 
-Flags should at minimum distinguish built-in, typed, and user-defined kinds.
+Flags should at minimum distinguish core, typed, and user-defined kinds.
 
 Rules:
 - registered kinds are immutable after creation
-- built-ins are seeded deterministically
+- core kinds are seeded deterministically
 - registration failures must be explicit
 - the registry is the source of truth for public IDs
 
@@ -175,19 +175,18 @@ Direct registry API:
 - `typed_kind::<T>() -> Result<Kind, SemanticError>`
 - `typed_kind_named::<T>(name) -> Result<Kind, SemanticError>`
 - `unregister_kind(kind) -> Result<bool, SemanticError>`
+- `unregister_namespace(namespace) -> Result<bool, SemanticError>`
 - `add_edge(subject, relation, target) -> Result<bool, SemanticError>`
 - `add_edge_weighted(subject, relation, target, weight) -> Result<bool, SemanticError>`
-- `add_weighted_edge(subject, relation, target, weight) -> Result<bool, SemanticError>` as a compatibility alias
 - `remove_edge(subject, relation, target) -> Result<bool, SemanticError>`
 - `has_edge(subject, relation, target) -> bool`
 - `apply_commands(commands) -> Result<bool, SemanticError>`
 - `batch() -> SemanticRegistryBatch`
-- `builtins() -> Builtins`
+- `core() -> Core`
 - `kind(name) -> Option<Kind>`
 - `kind_of::<T>() -> Option<Kind>`
 - `name(kind) -> Option<&str>`
 - `type_id(kind) -> Option<TypeId>`
-- `ensure_builtins() -> Result<Builtins, SemanticError>`
 - `snapshot() -> SemanticSnapshot`
 - `snapshot_cached() -> Arc<SemanticSnapshot>`
 
@@ -199,11 +198,14 @@ Registration rules:
 - typed registration may reuse an existing canonical name only when the type binding is compatible
 - conflicting name or type bindings return `SemanticError`
 - unregistering a kind removes its incident edges and any type binding
-- built-in kinds cannot be unregistered
+- unregistering a namespace removes every kind whose canonical name starts with that namespace prefix, along with incident edges and type bindings
+- namespace removal is prefix-based on canonical names
+- the reserved `Core` namespace cannot be removed in any case variant
+- core kinds cannot be unregistered
 
-## 4. Built-ins
+## 4. Core
 
-Ship these built-ins in v1:
+Ship these core kinds in v1:
 - `Relation`
 - `Namespace`
 - `is_a`
@@ -225,7 +227,7 @@ Seed edges:
 - `cant_be negates can_be`
 
 Rules:
-- built-ins are explicit semantic facts, not inferred aliases
+- core kinds are explicit semantic facts, not inferred aliases
 - v1 does not store a reverse-taxonomy relation for `is_a`
 - reverse taxonomy traversal is query behavior, not stored semantics
 
@@ -312,7 +314,7 @@ Snapshot contents:
 
 Snapshot API:
 - `version() -> u64`
-- `builtins() -> Builtins`
+- `core() -> Core`
 - `kinds() -> &[Kind]` in ascending internal dense order
 - `edges() -> &[SemanticEdge]` in `(subject, relation, target)` order
 - `kind(name) -> Option<Kind>`
@@ -342,7 +344,6 @@ Core commands:
 - `RegisterTypedKind { type_id: TypeId, name: Option<Arc<str>> }`
 - `AddEdge { subject: Kind, relation: Kind, target: Kind, weight: Option<Weight> }`
 - `RemoveEdge { subject: Kind, relation: Kind, target: Kind }`
-- `EnsureBuiltins`
 
 Rules:
 - command order is deterministic
@@ -350,7 +351,7 @@ Rules:
 - no implicit aliasing or correction
 - invalid registrations and collisions return explicit errors
 - unregistering a kind removes its incident edges and any type binding
-- built-in kinds cannot be unregistered
+- core kinds cannot be unregistered
 - `AddEdge` upserts the triple and optional weight metadata
 - `RemoveEdge` removes by triple only
 - compiled queries and caches must become stale when versions change
@@ -489,11 +490,13 @@ Rules:
 - `Semantics::edit()` returns the fluent edit chain, while direct `Semantics` writes return `Result`
 - `SemanticPlaybackQueue` is for batches produced off-thread and replayed on the main thread
 - `Semantics::snapshot()` returns the cached `Arc<SemanticSnapshot>` for query work
+- `Semantics::core()` returns the seeded core handles
 
 Convenience command examples:
 - `register_kind("Tree")`
 - `unregister_kind(tree)`
-- `register_typed_kind::<Health>()`
+- `unregister_namespace("game")`
+- `typed_kind::<Health>()`
 - `typed_kind_named::<Health>("Health")`
 - `semantics.add_edge(a, is_a, b).add_edge(c, is_a, d).expect("seed taxonomy")`
 - `add_edge_weighted(a, priority, b, Weight::from(10))`
@@ -521,7 +524,7 @@ Tests must cover:
 - stable kind generation
 - collision detection
 - typed kind registration
-- built-in seed relations
+- core seed relations
 - exact triple lookup
 - unweighted edge storage and optional weight filtering
 - edge weight upsert on repeated `AddEdge`

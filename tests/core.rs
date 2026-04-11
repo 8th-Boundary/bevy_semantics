@@ -1,4 +1,3 @@
-use std::any::type_name;
 use std::sync::Arc;
 
 use bevy_semantics::{
@@ -8,12 +7,12 @@ use bevy_semantics::{SemanticCommand, SemanticPlaybackQueue};
 use bevy_tasks::{futures_lite::future, AsyncComputeTaskPool};
 
 #[test]
-fn builtins_are_seeded_and_taxonomy_works() {
+fn core_is_seeded_and_taxonomy_works() {
     let registry = SemanticRegistry::default();
-    let builtins = registry.builtins();
-    let relation = builtins.relation;
-    let is_a = builtins.is_a;
-    let not_a = builtins.not_a;
+    let core = registry.core();
+    let relation = core.relation;
+    let is_a = core.is_a;
+    let not_a = core.not_a;
 
     assert_eq!(registry.name(relation), Some("Relation"));
     assert_eq!(registry.name(is_a), Some("is_a"));
@@ -29,7 +28,7 @@ fn builtins_are_seeded_and_taxonomy_works() {
 #[test]
 fn semantics_facade_queries_work() -> Result<(), SemanticError> {
     let mut semantics = Semantics::default();
-    let builtins = semantics.ensure_builtins()?;
+    let core = semantics.core();
     let creature = semantics.register_kind("Creature")?;
     let beast = semantics.register_kind("Beast")?;
     let canine = semantics.register_kind("Canine")?;
@@ -38,9 +37,9 @@ fn semantics_facade_queries_work() -> Result<(), SemanticError> {
     let preys_on = semantics.register_kind("preys_on")?;
     let predated_by = semantics.register_kind("predated_by")?;
 
-    semantics.add_edge(beast, builtins.is_a, creature)?;
-    semantics.add_edge(canine, builtins.is_a, beast)?;
-    semantics.add_edge(wolf, builtins.is_a, canine)?;
+    semantics.add_edge(beast, core.is_a, creature)?;
+    semantics.add_edge(canine, core.is_a, beast)?;
+    semantics.add_edge(wolf, core.is_a, canine)?;
     semantics.add_edge(wolf, preys_on, rabbit)?;
     semantics.add_edge(rabbit, predated_by, wolf)?;
 
@@ -50,7 +49,7 @@ fn semantics_facade_queries_work() -> Result<(), SemanticError> {
     assert_eq!(semantics.subjects(predated_by, wolf), vec![rabbit]);
 
     let mut lineage = vec![wolf];
-    lineage.extend(semantics.reachable(wolf, builtins.is_a, EdgeDirection::Outgoing, usize::MAX));
+    lineage.extend(semantics.reachable(wolf, core.is_a, EdgeDirection::Outgoing, usize::MAX));
     assert_eq!(lineage, vec![wolf, canine, beast, creature]);
     Ok(())
 }
@@ -69,15 +68,15 @@ fn fluent_edit_chain_supports_typed_and_weighted_edges() -> Result<(), SemanticE
     struct Wolf;
 
     let mut semantics = Semantics::default();
-    let builtins = semantics.ensure_builtins()?;
+    let core = semantics.core();
 
     semantics
         .edit()
-        .register_typed_kind::<Marker>()
-        .register_typed_kind_named::<Creature>("Creature")
-        .register_typed_kind_named::<Beast>("Beast")
-        .register_typed_kind_named::<Canine>("Canine")
-        .register_typed_kind_named::<Wolf>("Wolf")
+        .typed_kind_named::<Marker>("Marker")
+        .typed_kind_named::<Creature>("Creature")
+        .typed_kind_named::<Beast>("Beast")
+        .typed_kind_named::<Canine>("Canine")
+        .typed_kind_named::<Wolf>("Wolf")
         .register_kind("damage")
         .expect("seed typed kinds");
 
@@ -90,9 +89,9 @@ fn fluent_edit_chain_supports_typed_and_weighted_edges() -> Result<(), SemanticE
 
     semantics
         .edit()
-        .add_edge(beast, builtins.is_a, creature)
-        .add_edge(canine, builtins.is_a, beast)
-        .add_edge(wolf, builtins.is_a, canine)
+        .add_edge(beast, core.is_a, creature)
+        .add_edge(canine, core.is_a, beast)
+        .add_edge(wolf, core.is_a, canine)
         .add_edge_weighted(wolf, damage, marker, Weight::from(7))
         .expect("seed edit chain");
 
@@ -133,14 +132,14 @@ fn typed_registration_tracks_type_id() -> Result<(), SemanticError> {
     struct Marker;
 
     let mut registry = SemanticRegistry::default();
-    let kind = registry.register_typed_kind::<Marker>()?;
+    let kind = registry.typed_kind_named::<Marker>("Marker")?;
 
     assert_eq!(registry.kind_of::<Marker>(), Some(kind));
     assert_eq!(
         registry.type_id(kind),
         Some(std::any::TypeId::of::<Marker>())
     );
-    assert_eq!(registry.name(kind), Some(type_name::<Marker>()));
+    assert_eq!(registry.name(kind), Some("Marker"));
     Ok(())
 }
 
@@ -152,7 +151,7 @@ fn unregister_kind_removes_incident_edges_and_type_bindings() -> Result<(), Sema
     let mut registry = SemanticRegistry::default();
     let relation = registry.register_kind("related_to")?;
     let source = registry.register_kind("Source")?;
-    let target = registry.register_typed_kind::<Marker>()?;
+    let target = registry.typed_kind_named::<Marker>("Marker")?;
 
     registry.add_edge(source, relation, target)?;
     registry.add_edge(target, relation, source)?;
@@ -163,7 +162,7 @@ fn unregister_kind_removes_incident_edges_and_type_bindings() -> Result<(), Sema
         registry.type_id(target),
         Some(std::any::TypeId::of::<Marker>())
     );
-    assert_eq!(registry.name(target), Some(type_name::<Marker>()));
+    assert_eq!(registry.name(target), Some("Marker"));
 
     assert!(registry.unregister_kind(target)?);
 
@@ -182,17 +181,127 @@ fn unregister_kind_removes_incident_edges_and_type_bindings() -> Result<(), Sema
 }
 
 #[test]
-fn built_in_kinds_cannot_be_unregistered() {
+fn core_kinds_cannot_be_unregistered() {
     let mut registry = SemanticRegistry::default();
-    let builtins = registry.builtins();
+    let core = registry.core();
 
     let error = registry
-        .unregister_kind(builtins.is_a)
+        .unregister_kind(core.is_a)
         .expect_err("built-ins should be protected");
 
     assert!(matches!(
         error,
-        SemanticError::CannotUnregisterBuiltInKind { kind } if kind == builtins.is_a
+        SemanticError::CannotUnregisterCoreKind { kind } if kind == core.is_a
+    ));
+}
+
+#[test]
+fn unregister_namespace_removes_matching_kinds_and_edges() -> Result<(), SemanticError> {
+    #[derive(Debug)]
+    struct Wolf;
+
+    let mut semantics = Semantics::default();
+    let core = semantics.core();
+
+    let creature = semantics.register_kind("game::Creature")?;
+    let beast = semantics.register_kind("game::Beast")?;
+    let canine = semantics.register_kind("game::Canine")?;
+    let wolf = semantics.typed_kind_named::<Wolf>("game::Wolf")?;
+    let rabbit = semantics.register_kind("game::Rabbit")?;
+    let preys_on = semantics.register_kind("game::preys_on")?;
+    let stone = semantics.register_kind("other::Stone")?;
+
+    semantics.add_edge(beast, core.is_a, creature)?;
+    semantics.add_edge(canine, core.is_a, beast)?;
+    semantics.add_edge(wolf, core.is_a, canine)?;
+    semantics.add_edge(wolf, preys_on, rabbit)?;
+    semantics.add_edge(stone, core.is_a, stone)?;
+
+    assert!(semantics.unregister_namespace("game")?);
+
+    for name in [
+        "game::Creature",
+        "game::Beast",
+        "game::Canine",
+        "game::Wolf",
+        "game::Rabbit",
+        "game::preys_on",
+    ] {
+        assert!(matches!(
+            semantics.kind(name),
+            Err(SemanticError::UnknownKind { .. })
+        ));
+    }
+    assert_eq!(semantics.kind("other::Stone")?, stone);
+    assert!(matches!(
+        semantics.kind_of::<Wolf>(),
+        Err(SemanticError::UnknownKind { .. })
+    ));
+    assert_eq!(semantics.name(wolf), None);
+    assert_eq!(semantics.type_id(wolf), None);
+    assert!(!semantics.has_edge(beast, core.is_a, creature));
+    assert!(!semantics.has_edge(canine, core.is_a, beast));
+    assert!(!semantics.has_edge(wolf, core.is_a, canine));
+    assert!(!semantics.has_edge(wolf, preys_on, rabbit));
+    assert!(semantics.has_edge(stone, core.is_a, stone));
+    Ok(())
+}
+
+#[test]
+fn unregister_namespace_command_is_supported() -> Result<(), SemanticError> {
+    let mut registry = SemanticRegistry::default();
+    let other = registry.register_kind("other::Stone")?;
+    let game_kind = registry.register_kind("game::Creature")?;
+
+    assert!(
+        registry.apply_command(SemanticCommand::UnregisterNamespace {
+            namespace: Arc::from("game"),
+        })?
+    );
+
+    assert!(registry.kind("game::Creature").is_none());
+    assert_eq!(registry.kind("other::Stone"), Some(other));
+    assert_eq!(registry.name(game_kind), None);
+    Ok(())
+}
+
+#[test]
+fn core_namespace_is_reserved_case_insensitively() {
+    #[derive(Debug)]
+    struct Marker;
+
+    let mut registry = SemanticRegistry::default();
+
+    let error = registry
+        .register_kind("CORE::Wolf")
+        .expect_err("reserved namespace should be blocked");
+    assert!(matches!(
+        error,
+        SemanticError::CannotUseReservedNamespace { namespace } if namespace.eq_ignore_ascii_case("core")
+    ));
+
+    let error = registry
+        .register_kind("core")
+        .expect_err("reserved namespace should be blocked");
+    assert!(matches!(
+        error,
+        SemanticError::CannotUseReservedNamespace { namespace } if namespace.eq_ignore_ascii_case("core")
+    ));
+
+    let error = registry
+        .typed_kind_named::<Marker>("Core::Marker")
+        .expect_err("reserved namespace should be blocked");
+    assert!(matches!(
+        error,
+        SemanticError::CannotUseReservedNamespace { namespace } if namespace.eq_ignore_ascii_case("core")
+    ));
+
+    let error = registry
+        .unregister_namespace("core")
+        .expect_err("reserved namespace should be blocked");
+    assert!(matches!(
+        error,
+        SemanticError::CannotUseReservedNamespace { namespace } if namespace.eq_ignore_ascii_case("core")
     ));
 }
 
@@ -214,8 +323,8 @@ fn edge_queries_and_traversal_are_deterministic() -> Result<(), SemanticError> {
     let mut registry = SemanticRegistry::default();
     let snapshot = {
         let mut batch = registry.batch();
-        let builtins = batch.ensure_builtins()?;
-        let is_a = builtins.is_a;
+        let core = batch.core();
+        let is_a = core.is_a;
 
         let a = batch.register_kind("A")?;
         let b = batch.register_kind("B")?;
@@ -228,8 +337,8 @@ fn edge_queries_and_traversal_are_deterministic() -> Result<(), SemanticError> {
         batch.snapshot()
     };
 
-    let builtins = registry.builtins();
-    let is_a = builtins.is_a;
+    let core = registry.core();
+    let is_a = core.is_a;
     let a = registry.kind("A").expect("A kind");
     let b = registry.kind("B").expect("B kind");
     let c = registry.kind("C").expect("C kind");
@@ -312,7 +421,7 @@ fn edge_queries_and_traversal_are_deterministic() -> Result<(), SemanticError> {
 #[test]
 fn batch_builds_snapshot_once() -> Result<(), SemanticError> {
     let mut registry = SemanticRegistry::default();
-    let is_a = registry.builtins().is_a;
+    let is_a = registry.core().is_a;
 
     let snapshot = {
         let mut batch = registry.batch();
@@ -332,7 +441,7 @@ fn batch_builds_snapshot_once() -> Result<(), SemanticError> {
 #[test]
 fn compiled_queries_fail_when_snapshot_versions_change() -> Result<(), SemanticError> {
     let mut registry = SemanticRegistry::default();
-    let is_a = registry.builtins().is_a;
+    let is_a = registry.core().is_a;
     let a = registry.register_kind("A")?;
     let b = registry.register_kind("B")?;
 
@@ -381,7 +490,7 @@ fn task_commands_can_be_played_back_later() -> Result<(), SemanticError> {
     let mut registry = SemanticRegistry::default();
     let snapshot = {
         let mut batch = registry.batch();
-        let builtins = batch.ensure_builtins()?;
+        let core = batch.core();
         let creature = batch.register_kind("Creature")?;
         let beast = batch.register_kind("Beast")?;
         let canine = batch.register_kind("Canine")?;
@@ -401,23 +510,23 @@ fn task_commands_can_be_played_back_later() -> Result<(), SemanticError> {
         let grows_in = batch.register_kind("grows_in")?;
 
         for relation in [preys_on, predated_by, drops, dropped_by, grows_in] {
-            batch.add_edge(relation, builtins.is_a, builtins.relation)?;
+            batch.add_edge(relation, core.is_a, core.relation)?;
         }
 
-        batch.add_edge(preys_on, builtins.inverse_of, predated_by)?;
-        batch.add_edge(predated_by, builtins.inverse_of, preys_on)?;
-        batch.add_edge(drops, builtins.inverse_of, dropped_by)?;
-        batch.add_edge(dropped_by, builtins.inverse_of, drops)?;
+        batch.add_edge(preys_on, core.inverse_of, predated_by)?;
+        batch.add_edge(predated_by, core.inverse_of, preys_on)?;
+        batch.add_edge(drops, core.inverse_of, dropped_by)?;
+        batch.add_edge(dropped_by, core.inverse_of, drops)?;
 
-        batch.add_edge(beast, builtins.is_a, creature)?;
-        batch.add_edge(canine, builtins.is_a, beast)?;
-        batch.add_edge(wolf, builtins.is_a, canine)?;
-        batch.add_edge(rabbit, builtins.is_a, beast)?;
-        batch.add_edge(resource, builtins.is_a, item)?;
-        batch.add_edge(herb, builtins.is_a, resource)?;
-        batch.add_edge(loot, builtins.is_a, item)?;
-        batch.add_edge(pelt, builtins.is_a, loot)?;
-        batch.add_edge(forest, builtins.is_a, place)?;
+        batch.add_edge(beast, core.is_a, creature)?;
+        batch.add_edge(canine, core.is_a, beast)?;
+        batch.add_edge(wolf, core.is_a, canine)?;
+        batch.add_edge(rabbit, core.is_a, beast)?;
+        batch.add_edge(resource, core.is_a, item)?;
+        batch.add_edge(herb, core.is_a, resource)?;
+        batch.add_edge(loot, core.is_a, item)?;
+        batch.add_edge(pelt, core.is_a, loot)?;
+        batch.add_edge(forest, core.is_a, place)?;
 
         batch.add_edge(wolf, preys_on, rabbit)?;
         batch.add_edge(wolf, drops, pelt)?;

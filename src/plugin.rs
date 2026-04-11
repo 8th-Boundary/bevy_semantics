@@ -41,28 +41,38 @@ impl Semantics {
         self.0.register_kind(name)
     }
 
+    /// Register the Rust type `T` under its default canonical name.
+    pub fn typed_kind<T>(&mut self) -> Result<Kind, SemanticError>
+    where
+        T: 'static,
+    {
+        self.0.typed_kind::<T>()
+    }
+
+    /// Register the Rust type `T` under an explicit canonical name.
+    pub fn typed_kind_named<T>(&mut self, name: impl AsRef<str>) -> Result<Kind, SemanticError>
+    where
+        T: 'static,
+    {
+        self.0.typed_kind_named::<T>(name)
+    }
+
     /// Unregister a kind immediately.
     pub fn unregister_kind(&mut self, kind: Kind) -> Result<bool, SemanticError> {
         self.0.unregister_kind(kind)
     }
 
-    /// Register a typed kind immediately.
-    pub fn register_typed_kind<T>(&mut self) -> Result<Kind, SemanticError>
-    where
-        T: 'static,
-    {
-        self.0.register_typed_kind::<T>()
+    /// Return the seeded core handles.
+    pub fn core(&self) -> crate::registry::Core {
+        self.0.core()
     }
 
-    /// Register a typed kind with an explicit name immediately.
-    pub fn register_typed_kind_named<T>(
+    /// Unregister every kind whose canonical name lives under the given namespace prefix.
+    pub fn unregister_namespace(
         &mut self,
-        name: impl AsRef<str>,
-    ) -> Result<Kind, SemanticError>
-    where
-        T: 'static,
-    {
-        self.0.register_typed_kind_named::<T>(name)
+        namespace: impl AsRef<str>,
+    ) -> Result<bool, SemanticError> {
+        self.0.unregister_namespace(namespace)
     }
 
     /// Resolve a canonical kind name.
@@ -144,7 +154,6 @@ impl Semantics {
     }
 
     /// Insert or update a weighted semantic edge immediately.
-    #[doc(alias = "add_weighted_edge")]
     pub fn add_edge_weighted(
         &mut self,
         subject: Kind,
@@ -154,18 +163,6 @@ impl Semantics {
     ) -> Result<bool, SemanticError> {
         self.0
             .add_edge_weighted(subject, relation, target, weight.into())
-    }
-
-    /// Compatibility alias for [`Semantics::add_edge_weighted`].
-    #[doc(alias = "add_edge_weighted")]
-    pub fn add_weighted_edge(
-        &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: impl Into<Weight>,
-    ) -> Result<bool, SemanticError> {
-        self.add_edge_weighted(subject, relation, target, weight)
     }
 
     /// Remove a semantic edge immediately.
@@ -212,19 +209,32 @@ impl<'a> SemanticEdit<'a> {
         self
     }
 
+    /// Unregister every kind under the given namespace prefix immediately.
+    pub fn unregister_namespace(mut self, namespace: impl Into<Arc<str>>) -> Self {
+        if self.error.is_ok() {
+            let namespace = namespace.into();
+            self.error = self
+                .semantics
+                .0
+                .unregister_namespace(namespace.as_ref())
+                .map(|_| ());
+        }
+        self
+    }
+
     /// Register a typed kind immediately.
-    pub fn register_typed_kind<T>(mut self) -> Self
+    pub fn typed_kind<T>(mut self) -> Self
     where
         T: 'static,
     {
         if self.error.is_ok() {
-            self.error = self.semantics.0.register_typed_kind::<T>().map(|_| ());
+            self.error = self.semantics.0.typed_kind::<T>().map(|_| ());
         }
         self
     }
 
     /// Register a typed kind with an explicit name immediately.
-    pub fn register_typed_kind_named<T>(mut self, name: impl Into<Arc<str>>) -> Self
+    pub fn typed_kind_named<T>(mut self, name: impl Into<Arc<str>>) -> Self
     where
         T: 'static,
     {
@@ -233,7 +243,7 @@ impl<'a> SemanticEdit<'a> {
             self.error = self
                 .semantics
                 .0
-                .register_typed_kind_named::<T>(name.as_ref())
+                .typed_kind_named::<T>(name.as_ref())
                 .map(|_| ());
         }
         self
@@ -252,7 +262,6 @@ impl<'a> SemanticEdit<'a> {
     }
 
     /// Add a weighted edge to the current semantic state.
-    #[doc(alias = "add_weighted_edge")]
     pub fn add_edge_weighted(
         mut self,
         subject: Kind,
@@ -269,18 +278,6 @@ impl<'a> SemanticEdit<'a> {
                 .map(|_| ());
         }
         self
-    }
-
-    /// Compatibility alias for [`SemanticEdit::add_edge_weighted`].
-    #[doc(alias = "add_edge_weighted")]
-    pub fn add_weighted_edge(
-        self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: impl Into<Weight>,
-    ) -> Self {
-        self.add_edge_weighted(subject, relation, target, weight)
     }
 
     /// Remove an edge from the current semantic state.
@@ -371,11 +368,13 @@ pub trait SemanticCommandsExt<'w, 's> {
 
     fn unregister_kind(&mut self, kind: Kind) -> &mut Self;
 
-    fn register_typed_kind<T>(&mut self) -> &mut Self
+    fn unregister_namespace(&mut self, namespace: impl Into<Arc<str>>) -> &mut Self;
+
+    fn typed_kind<T>(&mut self) -> &mut Self
     where
         T: 'static;
 
-    fn register_typed_kind_named<T>(&mut self, name: impl Into<Arc<str>>) -> &mut Self
+    fn typed_kind_named<T>(&mut self, name: impl Into<Arc<str>>) -> &mut Self
     where
         T: 'static;
 
@@ -389,83 +388,7 @@ pub trait SemanticCommandsExt<'w, 's> {
         weight: impl Into<Weight>,
     ) -> &mut Self;
 
-    #[doc(hidden)]
-    fn add_weighted_edge(
-        &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: impl Into<Weight>,
-    ) -> &mut Self {
-        self.add_edge_weighted(subject, relation, target, weight)
-    }
-
     fn remove_edge(&mut self, subject: Kind, relation: Kind, target: Kind) -> &mut Self;
-
-    fn ensure_builtins(&mut self) -> &mut Self;
-
-    #[doc(hidden)]
-    fn semantic_register_kind(&mut self, name: impl Into<Arc<str>>) -> &mut Self {
-        self.register_kind(name)
-    }
-
-    #[doc(hidden)]
-    fn semantic_unregister_kind(&mut self, kind: Kind) -> &mut Self {
-        self.unregister_kind(kind)
-    }
-
-    #[doc(hidden)]
-    fn semantic_register_typed_kind<T>(&mut self) -> &mut Self
-    where
-        T: 'static,
-    {
-        self.register_typed_kind::<T>()
-    }
-
-    #[doc(hidden)]
-    fn semantic_register_typed_kind_named<T>(&mut self, name: impl Into<Arc<str>>) -> &mut Self
-    where
-        T: 'static,
-    {
-        self.register_typed_kind_named::<T>(name)
-    }
-
-    #[doc(hidden)]
-    fn semantic_add_edge(&mut self, subject: Kind, relation: Kind, target: Kind) -> &mut Self {
-        self.add_edge(subject, relation, target)
-    }
-
-    #[doc(hidden)]
-    fn semantic_add_edge_weighted(
-        &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: impl Into<Weight>,
-    ) -> &mut Self {
-        self.add_edge_weighted(subject, relation, target, weight)
-    }
-
-    #[doc(hidden)]
-    fn semantic_add_weighted_edge(
-        &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: impl Into<Weight>,
-    ) -> &mut Self {
-        self.add_edge_weighted(subject, relation, target, weight)
-    }
-
-    #[doc(hidden)]
-    fn semantic_remove_edge(&mut self, subject: Kind, relation: Kind, target: Kind) -> &mut Self {
-        self.remove_edge(subject, relation, target)
-    }
-
-    #[doc(hidden)]
-    fn semantic_ensure_builtins(&mut self) -> &mut Self {
-        self.ensure_builtins()
-    }
 }
 
 impl<'w, 's> SemanticCommandsExt<'w, 's> for Commands<'w, 's> {
@@ -490,7 +413,18 @@ impl<'w, 's> SemanticCommandsExt<'w, 's> for Commands<'w, 's> {
         self
     }
 
-    fn register_typed_kind<T>(&mut self) -> &mut Self
+    fn unregister_namespace(&mut self, namespace: impl Into<Arc<str>>) -> &mut Self {
+        let namespace = namespace.into();
+        self.queue(move |world: &mut World| {
+            let mut queue = world
+                .get_resource_mut::<SemanticCommandQueue>()
+                .expect("semantic command buffer is missing; add SemanticsPlugin first");
+            queue.push(SemanticCommand::UnregisterNamespace { namespace });
+        });
+        self
+    }
+
+    fn typed_kind<T>(&mut self) -> &mut Self
     where
         T: 'static,
     {
@@ -507,7 +441,7 @@ impl<'w, 's> SemanticCommandsExt<'w, 's> for Commands<'w, 's> {
         self
     }
 
-    fn register_typed_kind_named<T>(&mut self, name: impl Into<Arc<str>>) -> &mut Self
+    fn typed_kind_named<T>(&mut self, name: impl Into<Arc<str>>) -> &mut Self
     where
         T: 'static,
     {
@@ -561,16 +495,6 @@ impl<'w, 's> SemanticCommandsExt<'w, 's> for Commands<'w, 's> {
         self
     }
 
-    fn add_weighted_edge(
-        &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: impl Into<Weight>,
-    ) -> &mut Self {
-        self.add_edge_weighted(subject, relation, target, weight)
-    }
-
     fn remove_edge(&mut self, subject: Kind, relation: Kind, target: Kind) -> &mut Self {
         self.queue(move |world: &mut World| {
             let mut queue = world
@@ -581,16 +505,6 @@ impl<'w, 's> SemanticCommandsExt<'w, 's> for Commands<'w, 's> {
                 relation,
                 target,
             });
-        });
-        self
-    }
-
-    fn ensure_builtins(&mut self) -> &mut Self {
-        self.queue(move |world: &mut World| {
-            let mut queue = world
-                .get_resource_mut::<SemanticCommandQueue>()
-                .expect("semantic command buffer is missing; add SemanticsPlugin first");
-            queue.push(SemanticCommand::EnsureBuiltins);
         });
         self
     }

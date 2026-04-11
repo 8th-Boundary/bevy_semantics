@@ -57,6 +57,9 @@ pub enum SemanticCommand {
     RegisterKind {
         name: Arc<str>,
     },
+    UnregisterNamespace {
+        namespace: Arc<str>,
+    },
     UnregisterKind {
         kind: Kind,
     },
@@ -75,7 +78,6 @@ pub enum SemanticCommand {
         relation: Kind,
         target: Kind,
     },
-    EnsureBuiltins,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]

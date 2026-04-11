@@ -16,8 +16,11 @@ pub enum SemanticError {
     UnknownKind {
         kind: Kind,
     },
-    CannotUnregisterBuiltInKind {
+    CannotUnregisterCoreKind {
         kind: Kind,
+    },
+    CannotUseReservedNamespace {
+        namespace: String,
     },
     KindTypeConflict {
         kind: Kind,
@@ -55,8 +58,11 @@ impl std::fmt::Display for SemanticError {
                 "kind hash collision for {kind}: existing '{existing_name}', requested '{requested_name}'"
             ),
             SemanticError::UnknownKind { kind } => write!(f, "unknown kind '{kind}'"),
-            SemanticError::CannotUnregisterBuiltInKind { kind } => {
-                write!(f, "cannot unregister built-in kind '{kind}'")
+            SemanticError::CannotUnregisterCoreKind { kind } => {
+                write!(f, "cannot unregister core kind '{kind}'")
+            }
+            SemanticError::CannotUseReservedNamespace { namespace } => {
+                write!(f, "cannot use reserved namespace '{namespace}'")
             }
             SemanticError::KindTypeConflict {
                 kind,

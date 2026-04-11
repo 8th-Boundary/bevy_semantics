@@ -26,10 +26,9 @@ pub mod prelude {
         CompiledEdgeQuery, CompiledTraversalQuery, EdgeQuery, EdgeQueryBuilder, SemanticCommand,
         SemanticEdge, TraversalQuery, TraversalQueryBuilder,
     };
-    pub use crate::registry::{Builtins, SemanticRegistry, SemanticRegistryBatch};
+    pub use crate::registry::{Core, SemanticRegistry, SemanticRegistryBatch};
     pub use crate::snapshot::SemanticSnapshot;
     pub use crate::weight::Weight;
-    pub use crate::RegistryBatch;
 }
 
 pub use direction::EdgeDirection;
@@ -39,10 +38,8 @@ pub use query::{
     CompiledEdgeQuery, CompiledTraversalQuery, EdgeQuery, EdgeQueryBuilder, SemanticCommand,
     SemanticEdge, TraversalQuery, TraversalQueryBuilder,
 };
-pub use registry::{Builtins, SemanticRegistry, SemanticRegistryBatch};
+pub use registry::{Core, SemanticRegistry, SemanticRegistryBatch};
 pub use snapshot::SemanticSnapshot;
 pub use weight::Weight;
-
-pub type RegistryBatch<'a> = SemanticRegistryBatch<'a>;
 
 pub use plugin::{CommandsExt, SemanticEdit, SemanticPlaybackQueue, Semantics, SemanticsPlugin};

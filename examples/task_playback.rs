@@ -25,7 +25,7 @@ fn setup_semantics_impl(
     semantics: &mut Semantics,
     task_state: &mut TaskState,
 ) -> Result<(), SemanticError> {
-    let builtins = semantics.ensure_builtins()?;
+    let core = semantics.core();
 
     let creature = semantics.register_kind("Creature")?;
     let beast = semantics.register_kind("Beast")?;
@@ -45,26 +45,26 @@ fn setup_semantics_impl(
     let dropped_by = semantics.register_kind("dropped_by")?;
     let grows_in = semantics.register_kind("grows_in")?;
 
-    semantics.add_edge(preys_on, builtins.is_a, builtins.relation)?;
-    semantics.add_edge(predated_by, builtins.is_a, builtins.relation)?;
-    semantics.add_edge(drops, builtins.is_a, builtins.relation)?;
-    semantics.add_edge(dropped_by, builtins.is_a, builtins.relation)?;
-    semantics.add_edge(grows_in, builtins.is_a, builtins.relation)?;
+    semantics.add_edge(preys_on, core.is_a, core.relation)?;
+    semantics.add_edge(predated_by, core.is_a, core.relation)?;
+    semantics.add_edge(drops, core.is_a, core.relation)?;
+    semantics.add_edge(dropped_by, core.is_a, core.relation)?;
+    semantics.add_edge(grows_in, core.is_a, core.relation)?;
 
-    semantics.add_edge(preys_on, builtins.inverse_of, predated_by)?;
-    semantics.add_edge(predated_by, builtins.inverse_of, preys_on)?;
-    semantics.add_edge(drops, builtins.inverse_of, dropped_by)?;
-    semantics.add_edge(dropped_by, builtins.inverse_of, drops)?;
+    semantics.add_edge(preys_on, core.inverse_of, predated_by)?;
+    semantics.add_edge(predated_by, core.inverse_of, preys_on)?;
+    semantics.add_edge(drops, core.inverse_of, dropped_by)?;
+    semantics.add_edge(dropped_by, core.inverse_of, drops)?;
 
-    semantics.add_edge(beast, builtins.is_a, creature)?;
-    semantics.add_edge(canine, builtins.is_a, beast)?;
-    semantics.add_edge(wolf, builtins.is_a, canine)?;
-    semantics.add_edge(rabbit, builtins.is_a, beast)?;
-    semantics.add_edge(resource, builtins.is_a, item)?;
-    semantics.add_edge(herb, builtins.is_a, resource)?;
-    semantics.add_edge(loot, builtins.is_a, item)?;
-    semantics.add_edge(pelt, builtins.is_a, loot)?;
-    semantics.add_edge(forest, builtins.is_a, place)?;
+    semantics.add_edge(beast, core.is_a, creature)?;
+    semantics.add_edge(canine, core.is_a, beast)?;
+    semantics.add_edge(wolf, core.is_a, canine)?;
+    semantics.add_edge(rabbit, core.is_a, beast)?;
+    semantics.add_edge(resource, core.is_a, item)?;
+    semantics.add_edge(herb, core.is_a, resource)?;
+    semantics.add_edge(loot, core.is_a, item)?;
+    semantics.add_edge(pelt, core.is_a, loot)?;
+    semantics.add_edge(forest, core.is_a, place)?;
 
     semantics.add_edge(wolf, preys_on, rabbit)?;
     semantics.add_edge(wolf, drops, pelt)?;

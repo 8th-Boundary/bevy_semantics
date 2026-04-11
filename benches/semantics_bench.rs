@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy_semantics::{
-    Builtins, Kind, SemanticCommand, SemanticPlaybackQueue, SemanticRegistry, Weight,
+    Core, Kind, SemanticCommand, SemanticPlaybackQueue, SemanticRegistry, Weight,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
@@ -12,7 +12,7 @@ const TRAVERSAL_DEPTH: usize = 128;
 struct Fixture {
     registry: SemanticRegistry,
     snapshot: Arc<bevy_semantics::SemanticSnapshot>,
-    builtins: Builtins,
+    core: Core,
     root: Kind,
     target: Kind,
     playable: Kind,
@@ -24,12 +24,10 @@ struct Fixture {
     task_commands: Vec<SemanticCommand>,
 }
 
-fn populate_registry(
-    registry: &mut SemanticRegistry,
-) -> (Builtins, Kind, Kind, Kind, Kind, Vec<Kind>) {
+fn populate_registry(registry: &mut SemanticRegistry) -> (Core, Kind, Kind, Kind, Kind, Vec<Kind>) {
     let mut batch = registry.batch();
-    let builtins = batch.ensure_builtins().expect("builtin is_a");
-    let is_a = builtins.is_a;
+    let core = batch.core();
+    let is_a = core.is_a;
     let root = batch.register_kind("root").expect("root kind");
     let linked_to = batch.register_kind("linked_to").expect("linked_to kind");
     let playable = batch.register_kind("Playable").expect("Playable kind");
@@ -48,11 +46,11 @@ fn populate_registry(
 
     for index in (0..NODE_COUNT).step_by(LINK_STRIDE) {
         batch
-            .add_weighted_edge(root, linked_to, nodes[index], Weight::from(index as i64))
+            .add_edge_weighted(root, linked_to, nodes[index], Weight::from(index as i64))
             .expect("linked edge");
     }
 
-    (builtins, is_a, root, linked_to, playable, nodes)
+    (core, is_a, root, linked_to, playable, nodes)
 }
 
 fn derive_task_commands(
@@ -63,7 +61,7 @@ fn derive_task_commands(
 ) -> Vec<SemanticCommand> {
     let descendants = snapshot
         .edge_query()
-        .relation(snapshot.builtins().is_a)
+        .relation(snapshot.core().is_a)
         .target(root)
         .run_subjects(snapshot)
         .expect("descendants");
@@ -81,12 +79,12 @@ fn derive_task_commands(
 
 fn build_fixture() -> Fixture {
     let mut registry = SemanticRegistry::default();
-    let (builtins, is_a, root, linked_to, playable, nodes) = populate_registry(&mut registry);
+    let (core, is_a, root, linked_to, playable, nodes) = populate_registry(&mut registry);
     let snapshot = registry.snapshot_cached();
     let lookup_index = NODE_COUNT / 2;
     let lookup_name = format!("node_{lookup_index:04}");
     let target = nodes[lookup_index];
-    let task_commands = derive_task_commands(&snapshot, root, builtins.can_be, playable);
+    let task_commands = derive_task_commands(&snapshot, root, core.can_be, playable);
     let subject_source = snapshot
         .traversal_query()
         .seed(root)
@@ -116,7 +114,7 @@ fn build_fixture() -> Fixture {
     Fixture {
         registry,
         snapshot,
-        builtins,
+        core,
         root,
         target,
         playable,
@@ -239,7 +237,7 @@ fn bench_task_command_derivation(c: &mut Criterion) {
             black_box(derive_task_commands(
                 black_box(&fixture.snapshot),
                 black_box(fixture.root),
-                black_box(fixture.builtins.can_be),
+                black_box(fixture.core.can_be),
                 black_box(fixture.playable),
             ))
         })
