@@ -6,8 +6,6 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 
-use bevy_ecs::prelude::Resource;
-
 use crate::direction::EdgeDirection;
 use crate::error::SemanticError;
 use crate::kind::Kind;
@@ -20,7 +18,7 @@ type EdgeQueryLocalCache = Arc<RwLock<EdgeQueryCacheEntry>>;
 type TraversalQueryLocalCache = Arc<RwLock<TraversalQueryCacheEntry>>;
 
 /// Canonical semantic edge record.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Resource)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SemanticEdge {
     pub subject: Kind,
     pub relation: Kind,

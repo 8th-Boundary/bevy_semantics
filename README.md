@@ -16,6 +16,13 @@ Use this crate when you want to answer questions like:
 - what does it drop?
 - where does it grow?
 
+## Bevy Compatibility
+
+| bevy_semantics | Bevy |
+| --- | --- |
+| `0.2.x` | `0.19.x` |
+| `0.1.x` | `0.18.x` |
+
 ## What This Crate Gives You
 
 - stable semantic identities
