@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
+use bevy_ecs::component::Component;
+use bevy_ecs::world::World;
+use bevy_semantics::core::{CAN_BE, IS_A};
 use bevy_semantics::{
-    Core, Kind, SemanticCommand, SemanticPlaybackQueue, SemanticRegistry, Weight,
+    Kind, SemanticCommand, SemanticComponent, SemanticComponents, SemanticPlaybackQueue,
+    SemanticRegistry, SemanticWorldExt, Weight,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
@@ -9,10 +13,13 @@ const NODE_COUNT: usize = 4_096;
 const LINK_STRIDE: usize = 16;
 const TRAVERSAL_DEPTH: usize = 128;
 
+#[derive(Component, SemanticComponent)]
+#[semantic(kind = "BenchComponent")]
+struct BenchComponent;
+
 struct Fixture {
     registry: SemanticRegistry,
     snapshot: Arc<bevy_semantics::SemanticSnapshot>,
-    core: Core,
     root: Kind,
     target: Kind,
     playable: Kind,
@@ -24,10 +31,8 @@ struct Fixture {
     task_commands: Vec<SemanticCommand>,
 }
 
-fn populate_registry(registry: &mut SemanticRegistry) -> (Core, Kind, Kind, Kind, Kind, Vec<Kind>) {
+fn populate_registry(registry: &mut SemanticRegistry) -> (Kind, Kind, Kind, Kind, Vec<Kind>) {
     let mut batch = registry.batch();
-    let core = batch.core();
-    let is_a = core.is_a;
     let root = batch.register_kind("root").expect("root kind");
     let linked_to = batch.register_kind("linked_to").expect("linked_to kind");
     let playable = batch.register_kind("Playable").expect("Playable kind");
@@ -40,7 +45,7 @@ fn populate_registry(registry: &mut SemanticRegistry) -> (Core, Kind, Kind, Kind
             .expect("node kind");
         nodes.push(node);
         batch
-            .add_edge(nodes[index - 1], is_a, node)
+            .add_edge(nodes[index - 1], IS_A, node)
             .expect("chain edge");
     }
 
@@ -50,7 +55,7 @@ fn populate_registry(registry: &mut SemanticRegistry) -> (Core, Kind, Kind, Kind
             .expect("linked edge");
     }
 
-    (core, is_a, root, linked_to, playable, nodes)
+    (IS_A, root, linked_to, playable, nodes)
 }
 
 fn derive_task_commands(
@@ -61,7 +66,7 @@ fn derive_task_commands(
 ) -> Vec<SemanticCommand> {
     let descendants = snapshot
         .edge_query()
-        .relation(snapshot.core().is_a)
+        .relation(IS_A)
         .target(root)
         .run_subjects(snapshot)
         .expect("descendants");
@@ -79,12 +84,12 @@ fn derive_task_commands(
 
 fn build_fixture() -> Fixture {
     let mut registry = SemanticRegistry::default();
-    let (core, is_a, root, linked_to, playable, nodes) = populate_registry(&mut registry);
+    let (is_a, root, linked_to, playable, nodes) = populate_registry(&mut registry);
     let snapshot = registry.snapshot_cached();
     let lookup_index = NODE_COUNT / 2;
     let lookup_name = format!("node_{lookup_index:04}");
     let target = nodes[lookup_index];
-    let task_commands = derive_task_commands(&snapshot, root, core.can_be, playable);
+    let task_commands = derive_task_commands(&snapshot, root, CAN_BE, playable);
     let subject_source = snapshot
         .traversal_query()
         .seed(root)
@@ -114,7 +119,6 @@ fn build_fixture() -> Fixture {
     Fixture {
         registry,
         snapshot,
-        core,
         root,
         target,
         playable,
@@ -158,6 +162,46 @@ fn bench_lookup_kind_by_name(c: &mut Criterion) {
     c.bench_function("semantics_lookup_kind_by_name", |b| {
         b.iter(|| black_box(fixture.snapshot.kind(black_box(&fixture.lookup_name))))
     });
+}
+
+fn bench_semantic_component_registration(c: &mut Criterion) {
+    let mut group = c.benchmark_group("semantics_component_registration");
+
+    group.bench_function("cold_world", |b| {
+        b.iter_batched(
+            World::new,
+            |mut world| {
+                black_box(
+                    world
+                        .try_register_semantic_component::<BenchComponent>()
+                        .expect("cold semantic component registration"),
+                )
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    let mut world = World::new();
+    world
+        .try_register_semantic_component::<BenchComponent>()
+        .expect("initial semantic component registration");
+
+    group.bench_function("idempotent", |b| {
+        b.iter(|| {
+            black_box(
+                world
+                    .try_register_semantic_component::<BenchComponent>()
+                    .expect("idempotent semantic component registration"),
+            )
+        })
+    });
+
+    group.bench_function("kind_to_component_lookup", |b| {
+        let mappings = world.resource::<SemanticComponents>();
+        b.iter(|| black_box(mappings.component_id(black_box(BenchComponent::KIND))))
+    });
+
+    group.finish();
 }
 
 fn bench_is_a_direct(c: &mut Criterion) {
@@ -237,7 +281,7 @@ fn bench_task_command_derivation(c: &mut Criterion) {
             black_box(derive_task_commands(
                 black_box(&fixture.snapshot),
                 black_box(fixture.root),
-                black_box(fixture.core.can_be),
+                black_box(CAN_BE),
                 black_box(fixture.playable),
             ))
         })
@@ -272,6 +316,7 @@ criterion_group!(
     bench_snapshot_cached,
     bench_bulk_authoring,
     bench_lookup_kind_by_name,
+    bench_semantic_component_registration,
     bench_is_a_direct,
     bench_edge_query_dynamic,
     bench_edge_query_compiled,
