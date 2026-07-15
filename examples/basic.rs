@@ -2,6 +2,16 @@ use bevy_app::{App, Last, Startup};
 use bevy_ecs::prelude::{Res, ResMut};
 use bevy_semantics::prelude::{EdgeDirection, Semantics, SemanticsPlugin};
 
+// `kind!` creates the stable ID at compile time. `register_kind` separately
+// publishes its canonical name into this runtime registry for authored graphs.
+macro_rules! register_static_kind {
+    ($semantics:expr, $name:literal) => {{
+        let registered = $semantics.register_kind($name)?;
+        assert_eq!(registered, bevy_semantics::kind!($name));
+        registered
+    }};
+}
+
 fn setup_semantics(mut semantics: ResMut<Semantics>) {
     // Bevy system functions stay simple here; the helper carries the fallible setup logic.
     if let Err(error) = setup_semantics_impl(&mut semantics) {
@@ -12,23 +22,23 @@ fn setup_semantics(mut semantics: ResMut<Semantics>) {
 fn setup_semantics_impl(semantics: &mut Semantics) -> Result<(), bevy_semantics::SemanticError> {
     let core = semantics.core();
 
-    let creature = semantics.register_kind("Creature")?;
-    let beast = semantics.register_kind("Beast")?;
-    let canine = semantics.register_kind("Canine")?;
-    let wolf = semantics.register_kind("Wolf")?;
-    let rabbit = semantics.register_kind("Rabbit")?;
-    let item = semantics.register_kind("Item")?;
-    let resource = semantics.register_kind("Resource")?;
-    let herb = semantics.register_kind("Herb")?;
-    let loot = semantics.register_kind("Loot")?;
-    let pelt = semantics.register_kind("Pelt")?;
-    let place = semantics.register_kind("Place")?;
-    let forest = semantics.register_kind("Forest")?;
-    let preys_on = semantics.register_kind("preys_on")?;
-    let predated_by = semantics.register_kind("predated_by")?;
-    let drops = semantics.register_kind("drops")?;
-    let dropped_by = semantics.register_kind("dropped_by")?;
-    let grows_in = semantics.register_kind("grows_in")?;
+    let creature = register_static_kind!(semantics, "Creature");
+    let beast = register_static_kind!(semantics, "Beast");
+    let canine = register_static_kind!(semantics, "Canine");
+    let wolf = register_static_kind!(semantics, "Wolf");
+    let rabbit = register_static_kind!(semantics, "Rabbit");
+    let item = register_static_kind!(semantics, "Item");
+    let resource = register_static_kind!(semantics, "Resource");
+    let herb = register_static_kind!(semantics, "Herb");
+    let loot = register_static_kind!(semantics, "Loot");
+    let pelt = register_static_kind!(semantics, "Pelt");
+    let place = register_static_kind!(semantics, "Place");
+    let forest = register_static_kind!(semantics, "Forest");
+    let preys_on = register_static_kind!(semantics, "preys_on");
+    let predated_by = register_static_kind!(semantics, "predated_by");
+    let drops = register_static_kind!(semantics, "drops");
+    let dropped_by = register_static_kind!(semantics, "dropped_by");
+    let grows_in = register_static_kind!(semantics, "grows_in");
 
     semantics.add_edge(preys_on, core.is_a, core.relation)?;
     semantics.add_edge(predated_by, core.is_a, core.relation)?;
@@ -69,16 +79,17 @@ fn inspect_semantics(semantics: Res<Semantics>) {
 fn inspect_semantics_impl(semantics: &Semantics) -> Result<(), bevy_semantics::SemanticError> {
     let core = semantics.core();
     let is_a = core.is_a;
-    let preys_on = semantics.kind("preys_on")?;
-    let predated_by = semantics.kind("predated_by")?;
-    let drops = semantics.kind("drops")?;
-    let dropped_by = semantics.kind("dropped_by")?;
-    let grows_in = semantics.kind("grows_in")?;
-    let wolf = semantics.kind("Wolf")?;
-    let rabbit = semantics.kind("Rabbit")?;
-    let herb = semantics.kind("Herb")?;
-    let pelt = semantics.kind("Pelt")?;
-    let forest = semantics.kind("Forest")?;
+    let preys_on = bevy_semantics::kind!("preys_on");
+    let predated_by = bevy_semantics::kind!("predated_by");
+    let drops = bevy_semantics::kind!("drops");
+    let dropped_by = bevy_semantics::kind!("dropped_by");
+    let grows_in = bevy_semantics::kind!("grows_in");
+    let wolf = bevy_semantics::kind!("Wolf");
+    let rabbit = bevy_semantics::kind!("Rabbit");
+    let herb = bevy_semantics::kind!("Herb");
+    let pelt = bevy_semantics::kind!("Pelt");
+    let forest = bevy_semantics::kind!("Forest");
+    // Runtime lookup remains useful when a name comes from authored/dynamic data.
     let creature = semantics.kind("Creature")?;
 
     let names = |kinds: Vec<bevy_semantics::Kind>| -> Vec<String> {

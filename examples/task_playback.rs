@@ -4,6 +4,16 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_semantics::prelude::*;
 use bevy_tasks::{futures_lite::future, AsyncComputeTaskPool, Task, TaskPool};
 
+// Static identity and runtime registration are complementary: `kind!` creates
+// the ID during compilation, while the registry retains names and graph data.
+macro_rules! register_static_kind {
+    ($semantics:expr, $name:literal) => {{
+        let registered = $semantics.register_kind($name)?;
+        assert_eq!(registered, kind!($name));
+        registered
+    }};
+}
+
 #[derive(Resource, Default)]
 struct TaskState {
     task: Option<Task<Vec<SemanticCommand>>>,
@@ -27,23 +37,23 @@ fn setup_semantics_impl(
 ) -> Result<(), SemanticError> {
     let core = semantics.core();
 
-    let creature = semantics.register_kind("Creature")?;
-    let beast = semantics.register_kind("Beast")?;
-    let canine = semantics.register_kind("Canine")?;
-    let wolf = semantics.register_kind("Wolf")?;
-    let rabbit = semantics.register_kind("Rabbit")?;
-    let item = semantics.register_kind("Item")?;
-    let resource = semantics.register_kind("Resource")?;
-    let herb = semantics.register_kind("Herb")?;
-    let loot = semantics.register_kind("Loot")?;
-    let pelt = semantics.register_kind("Pelt")?;
-    let place = semantics.register_kind("Place")?;
-    let forest = semantics.register_kind("Forest")?;
-    let preys_on = semantics.register_kind("preys_on")?;
-    let predated_by = semantics.register_kind("predated_by")?;
-    let drops = semantics.register_kind("drops")?;
-    let dropped_by = semantics.register_kind("dropped_by")?;
-    let grows_in = semantics.register_kind("grows_in")?;
+    let creature = register_static_kind!(semantics, "Creature");
+    let beast = register_static_kind!(semantics, "Beast");
+    let canine = register_static_kind!(semantics, "Canine");
+    let wolf = register_static_kind!(semantics, "Wolf");
+    let rabbit = register_static_kind!(semantics, "Rabbit");
+    let item = register_static_kind!(semantics, "Item");
+    let resource = register_static_kind!(semantics, "Resource");
+    let herb = register_static_kind!(semantics, "Herb");
+    let loot = register_static_kind!(semantics, "Loot");
+    let pelt = register_static_kind!(semantics, "Pelt");
+    let place = register_static_kind!(semantics, "Place");
+    let forest = register_static_kind!(semantics, "Forest");
+    let preys_on = register_static_kind!(semantics, "preys_on");
+    let predated_by = register_static_kind!(semantics, "predated_by");
+    let drops = register_static_kind!(semantics, "drops");
+    let dropped_by = register_static_kind!(semantics, "dropped_by");
+    let grows_in = register_static_kind!(semantics, "grows_in");
 
     semantics.add_edge(preys_on, core.is_a, core.relation)?;
     semantics.add_edge(predated_by, core.is_a, core.relation)?;
@@ -150,10 +160,10 @@ fn report_task_result(
 }
 
 fn report_task_result_impl(semantics: &Semantics) -> Result<(), SemanticError> {
-    let rabbit = semantics.kind("Rabbit")?;
-    let pelt = semantics.kind("Pelt")?;
-    let predated_by = semantics.kind("predated_by")?;
-    let dropped_by = semantics.kind("dropped_by")?;
+    let rabbit = kind!("Rabbit");
+    let pelt = kind!("Pelt");
+    let predated_by = kind!("predated_by");
+    let dropped_by = kind!("dropped_by");
 
     let names = |kinds: Vec<Kind>| -> Vec<String> {
         kinds
