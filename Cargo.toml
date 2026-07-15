@@ -27,13 +27,17 @@ criterion = { version = "0.5", default-features = true }
 trybuild = "1"
 
 [[example]]
-name = "basic"
+name = "semantics_basic"
+path = "examples/basic.rs"
 
 [[example]]
 name = "task_playback"
 
 [[example]]
 name = "semantic_components"
+
+[[example]]
+name = "manual_registration"
 
 [[bench]]
 name = "semantics_bench"

@@ -319,6 +319,22 @@ Register them like any other kind, optionally classify them under `Relation`, an
 
 If you want a full end-to-end example, see `examples/basic.rs`.
 
+## Examples
+
+From the parent workspace:
+
+```text
+cargo run -p bevy_semantics --example semantics_basic
+cargo run -p bevy_semantics --example semantic_components
+cargo run -p bevy_semantics --example task_playback
+cargo run -p bevy_semantics --example manual_registration
+```
+
+- `semantics_basic` authors an ontology with explicit compile-time `kind!` constants.
+- `semantic_components` derives identities and registers concrete generic components.
+- `task_playback` shares compile-time kinds with a background task.
+- `manual_registration` demonstrates the older dynamic `register_kind` path without Bevy.
+
 ## Background Tasks
 
 `SemanticSnapshot` is designed to be cloned into background work.
