@@ -1,16 +1,25 @@
 use bevy_app::{App, Last, Startup};
 use bevy_ecs::prelude::{Res, ResMut};
-use bevy_semantics::prelude::{EdgeDirection, Semantics, SemanticsPlugin};
+use bevy_semantics::kind;
+use bevy_semantics::prelude::{EdgeDirection, Kind, Semantics, SemanticsPlugin};
 
-// `kind!` creates the stable ID at compile time. `register_kind` separately
-// publishes its canonical name into this runtime registry for authored graphs.
-macro_rules! register_static_kind {
-    ($semantics:expr, $name:literal) => {{
-        let registered = $semantics.register_kind($name)?;
-        assert_eq!(registered, bevy_semantics::kind!($name));
-        registered
-    }};
-}
+const CREATURE: Kind = kind!("Creature");
+const BEAST: Kind = kind!("Beast");
+const CANINE: Kind = kind!("Canine");
+const WOLF: Kind = kind!("Wolf");
+const RABBIT: Kind = kind!("Rabbit");
+const ITEM: Kind = kind!("Item");
+const RESOURCE: Kind = kind!("Resource");
+const HERB: Kind = kind!("Herb");
+const LOOT: Kind = kind!("Loot");
+const PELT: Kind = kind!("Pelt");
+const PLACE: Kind = kind!("Place");
+const FOREST: Kind = kind!("Forest");
+const PREYS_ON: Kind = kind!("preys_on");
+const PREDATED_BY: Kind = kind!("predated_by");
+const DROPS: Kind = kind!("drops");
+const DROPPED_BY: Kind = kind!("dropped_by");
+const GROWS_IN: Kind = kind!("grows_in");
 
 fn setup_semantics(mut semantics: ResMut<Semantics>) {
     // Bevy system functions stay simple here; the helper carries the fallible setup logic.
@@ -22,50 +31,50 @@ fn setup_semantics(mut semantics: ResMut<Semantics>) {
 fn setup_semantics_impl(semantics: &mut Semantics) -> Result<(), bevy_semantics::SemanticError> {
     let core = semantics.core();
 
-    let creature = register_static_kind!(semantics, "Creature");
-    let beast = register_static_kind!(semantics, "Beast");
-    let canine = register_static_kind!(semantics, "Canine");
-    let wolf = register_static_kind!(semantics, "Wolf");
-    let rabbit = register_static_kind!(semantics, "Rabbit");
-    let item = register_static_kind!(semantics, "Item");
-    let resource = register_static_kind!(semantics, "Resource");
-    let herb = register_static_kind!(semantics, "Herb");
-    let loot = register_static_kind!(semantics, "Loot");
-    let pelt = register_static_kind!(semantics, "Pelt");
-    let place = register_static_kind!(semantics, "Place");
-    let forest = register_static_kind!(semantics, "Forest");
-    let preys_on = register_static_kind!(semantics, "preys_on");
-    let predated_by = register_static_kind!(semantics, "predated_by");
-    let drops = register_static_kind!(semantics, "drops");
-    let dropped_by = register_static_kind!(semantics, "dropped_by");
-    let grows_in = register_static_kind!(semantics, "grows_in");
+    assert_eq!(semantics.register_kind("Creature")?, CREATURE);
+    assert_eq!(semantics.register_kind("Beast")?, BEAST);
+    assert_eq!(semantics.register_kind("Canine")?, CANINE);
+    assert_eq!(semantics.register_kind("Wolf")?, WOLF);
+    assert_eq!(semantics.register_kind("Rabbit")?, RABBIT);
+    assert_eq!(semantics.register_kind("Item")?, ITEM);
+    assert_eq!(semantics.register_kind("Resource")?, RESOURCE);
+    assert_eq!(semantics.register_kind("Herb")?, HERB);
+    assert_eq!(semantics.register_kind("Loot")?, LOOT);
+    assert_eq!(semantics.register_kind("Pelt")?, PELT);
+    assert_eq!(semantics.register_kind("Place")?, PLACE);
+    assert_eq!(semantics.register_kind("Forest")?, FOREST);
+    assert_eq!(semantics.register_kind("preys_on")?, PREYS_ON);
+    assert_eq!(semantics.register_kind("predated_by")?, PREDATED_BY);
+    assert_eq!(semantics.register_kind("drops")?, DROPS);
+    assert_eq!(semantics.register_kind("dropped_by")?, DROPPED_BY);
+    assert_eq!(semantics.register_kind("grows_in")?, GROWS_IN);
 
-    semantics.add_edge(preys_on, core.is_a, core.relation)?;
-    semantics.add_edge(predated_by, core.is_a, core.relation)?;
-    semantics.add_edge(drops, core.is_a, core.relation)?;
-    semantics.add_edge(dropped_by, core.is_a, core.relation)?;
-    semantics.add_edge(grows_in, core.is_a, core.relation)?;
+    semantics.add_edge(PREYS_ON, core.is_a, core.relation)?;
+    semantics.add_edge(PREDATED_BY, core.is_a, core.relation)?;
+    semantics.add_edge(DROPS, core.is_a, core.relation)?;
+    semantics.add_edge(DROPPED_BY, core.is_a, core.relation)?;
+    semantics.add_edge(GROWS_IN, core.is_a, core.relation)?;
 
-    semantics.add_edge(preys_on, core.inverse_of, predated_by)?;
-    semantics.add_edge(predated_by, core.inverse_of, preys_on)?;
-    semantics.add_edge(drops, core.inverse_of, dropped_by)?;
-    semantics.add_edge(dropped_by, core.inverse_of, drops)?;
+    semantics.add_edge(PREYS_ON, core.inverse_of, PREDATED_BY)?;
+    semantics.add_edge(PREDATED_BY, core.inverse_of, PREYS_ON)?;
+    semantics.add_edge(DROPS, core.inverse_of, DROPPED_BY)?;
+    semantics.add_edge(DROPPED_BY, core.inverse_of, DROPS)?;
 
-    semantics.add_edge(beast, core.is_a, creature)?;
-    semantics.add_edge(canine, core.is_a, beast)?;
-    semantics.add_edge(wolf, core.is_a, canine)?;
-    semantics.add_edge(rabbit, core.is_a, beast)?;
-    semantics.add_edge(resource, core.is_a, item)?;
-    semantics.add_edge(herb, core.is_a, resource)?;
-    semantics.add_edge(loot, core.is_a, item)?;
-    semantics.add_edge(pelt, core.is_a, loot)?;
-    semantics.add_edge(forest, core.is_a, place)?;
+    semantics.add_edge(BEAST, core.is_a, CREATURE)?;
+    semantics.add_edge(CANINE, core.is_a, BEAST)?;
+    semantics.add_edge(WOLF, core.is_a, CANINE)?;
+    semantics.add_edge(RABBIT, core.is_a, BEAST)?;
+    semantics.add_edge(RESOURCE, core.is_a, ITEM)?;
+    semantics.add_edge(HERB, core.is_a, RESOURCE)?;
+    semantics.add_edge(LOOT, core.is_a, ITEM)?;
+    semantics.add_edge(PELT, core.is_a, LOOT)?;
+    semantics.add_edge(FOREST, core.is_a, PLACE)?;
 
-    semantics.add_edge(wolf, preys_on, rabbit)?;
-    semantics.add_edge(rabbit, predated_by, wolf)?;
-    semantics.add_edge(wolf, drops, pelt)?;
-    semantics.add_edge(pelt, dropped_by, wolf)?;
-    semantics.add_edge(herb, grows_in, forest)?;
+    semantics.add_edge(WOLF, PREYS_ON, RABBIT)?;
+    semantics.add_edge(RABBIT, PREDATED_BY, WOLF)?;
+    semantics.add_edge(WOLF, DROPS, PELT)?;
+    semantics.add_edge(PELT, DROPPED_BY, WOLF)?;
+    semantics.add_edge(HERB, GROWS_IN, FOREST)?;
 
     Ok(())
 }
@@ -79,16 +88,6 @@ fn inspect_semantics(semantics: Res<Semantics>) {
 fn inspect_semantics_impl(semantics: &Semantics) -> Result<(), bevy_semantics::SemanticError> {
     let core = semantics.core();
     let is_a = core.is_a;
-    let preys_on = bevy_semantics::kind!("preys_on");
-    let predated_by = bevy_semantics::kind!("predated_by");
-    let drops = bevy_semantics::kind!("drops");
-    let dropped_by = bevy_semantics::kind!("dropped_by");
-    let grows_in = bevy_semantics::kind!("grows_in");
-    let wolf = bevy_semantics::kind!("Wolf");
-    let rabbit = bevy_semantics::kind!("Rabbit");
-    let herb = bevy_semantics::kind!("Herb");
-    let pelt = bevy_semantics::kind!("Pelt");
-    let forest = bevy_semantics::kind!("Forest");
     // Runtime lookup remains useful when a name comes from authored/dynamic data.
     let creature = semantics.kind("Creature")?;
 
@@ -100,13 +99,13 @@ fn inspect_semantics_impl(semantics: &Semantics) -> Result<(), bevy_semantics::S
     };
 
     // `sq_` marks semantic query results, which are derived from semantic reads.
-    let mut sq_wolf_lineage = vec![wolf];
-    sq_wolf_lineage.extend(semantics.reachable(wolf, is_a, EdgeDirection::Outgoing, usize::MAX));
-    let sq_wolf_prey = semantics.targets(wolf, preys_on);
-    let sq_rabbit_predators = semantics.targets(rabbit, predated_by);
-    let sq_wolf_drops = semantics.targets(wolf, drops);
-    let sq_pelt_dropped_by = semantics.targets(pelt, dropped_by);
-    let sq_herb_sites = semantics.targets(herb, grows_in);
+    let mut sq_wolf_lineage = vec![WOLF];
+    sq_wolf_lineage.extend(semantics.reachable(WOLF, is_a, EdgeDirection::Outgoing, usize::MAX));
+    let sq_wolf_prey = semantics.targets(WOLF, PREYS_ON);
+    let sq_rabbit_predators = semantics.targets(RABBIT, PREDATED_BY);
+    let sq_wolf_drops = semantics.targets(WOLF, DROPS);
+    let sq_pelt_dropped_by = semantics.targets(PELT, DROPPED_BY);
+    let sq_herb_sites = semantics.targets(HERB, GROWS_IN);
 
     println!("wolf lineage: {:?}", names(sq_wolf_lineage));
     println!("wolf preys_on: {:?}", names(sq_wolf_prey));
@@ -114,9 +113,9 @@ fn inspect_semantics_impl(semantics: &Semantics) -> Result<(), bevy_semantics::S
     println!("wolf drops: {:?}", names(sq_wolf_drops));
     println!("pelt dropped_by: {:?}", names(sq_pelt_dropped_by));
     println!("herb grows_in: {:?}", names(sq_herb_sites));
-    println!("wolf is_a creature: {}", semantics.is_a(wolf, creature));
-    println!("pelt kind present: {}", semantics.name(pelt).is_some());
-    println!("forest kind present: {}", semantics.name(forest).is_some());
+    println!("wolf is_a creature: {}", semantics.is_a(WOLF, creature));
+    println!("pelt kind present: {}", semantics.name(PELT).is_some());
+    println!("forest kind present: {}", semantics.name(FOREST).is_some());
 
     Ok(())
 }
