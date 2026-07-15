@@ -115,9 +115,17 @@ fn parse_semantic_name(attrs: &[Attribute], fallback_span: proc_macro2::Span) ->
     };
 
     let mut name: Option<LitStr> = None;
+    let mut standalone = false;
     attribute.parse_nested_meta(|meta| {
+        if meta.path.is_ident("standalone") {
+            if standalone {
+                return Err(meta.error("duplicate `standalone` marker"));
+            }
+            standalone = true;
+            return Ok(());
+        }
         if !meta.path.is_ident("kind") {
-            return Err(meta.error("unknown semantic key; expected `kind`"));
+            return Err(meta.error("unknown semantic key; expected `kind` or `standalone`"));
         }
         if name.is_some() {
             return Err(meta.error("duplicate `kind` key"));

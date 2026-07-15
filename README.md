@@ -108,6 +108,19 @@ semantic_component!(Container<String>, kind = "Container<String>");
 This keeps `Container<u32>` and `Container<String>` one-to-one with their own
 `TypeId`, `Kind`, and per-world `ComponentId`.
 
+Behavior derives can normally generate this implementation themselves. If a
+type intentionally lists both derives, add the explicit `standalone` marker so
+the behavior derive defers to this derive:
+
+```rust
+#[derive(Component, Behavior, SemanticComponent)]
+#[semantic(kind = "MoveTo", standalone)]
+struct MoveTo {
+    #[behavior_state]
+    state: BehaviorState,
+}
+```
+
 ### Relation
 
 A relation is just a kind used in the relation slot of an edge.
