@@ -144,6 +144,22 @@ fn bench_snapshot_build(c: &mut Criterion) {
     });
 }
 
+fn bench_snapshot_build_tombstoned(c: &mut Criterion) {
+    let mut fixture = build_fixture();
+    for index in (LINK_STRIDE..NODE_COUNT).step_by(128) {
+        let name = format!("node_{index:04}");
+        let kind = fixture.registry.kind(&name).expect("tombstoned node kind");
+        fixture
+            .registry
+            .tombstone_kind(kind)
+            .expect("tombstone benchmark node");
+    }
+
+    c.bench_function("semantics_snapshot_build_4k_tombstoned", |b| {
+        b.iter(|| black_box(fixture.registry.snapshot()))
+    });
+}
+
 fn bench_snapshot_cached(c: &mut Criterion) {
     let fixture = build_fixture();
     c.bench_function("semantics_snapshot_cached_4k", |b| {
@@ -313,6 +329,7 @@ fn bench_task_command_playback(c: &mut Criterion) {
 criterion_group!(
     semantics_benches,
     bench_snapshot_build,
+    bench_snapshot_build_tombstoned,
     bench_snapshot_cached,
     bench_bulk_authoring,
     bench_lookup_kind_by_name,

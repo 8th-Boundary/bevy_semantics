@@ -393,17 +393,21 @@ Measured with `cargo bench -p bevy_semantics --bench semantics_bench` on the mac
 
 | Benchmark | Time |
 | --- | --- |
-| `semantics_snapshot_build_4k` | `1.0560 ms - 1.0873 ms` |
-| `semantics_snapshot_cached_4k` | `16.301 ns - 16.567 ns` |
-| `semantics_bulk_authoring_4k` | `2.0926 ms - 2.1538 ms` |
-| `semantics_lookup_kind_by_name` | `6.1803 ns - 6.4976 ns` |
-| `semantics_is_a_direct` | `34.189 ns - 34.429 ns` |
-| `semantics_edge_query_dynamic` | `47.730 ns - 48.824 ns` |
-| `semantics_edge_query_compiled` | `34.345 ns - 35.166 ns` |
-| `semantics_traversal_dynamic` | `52.202 ns - 54.122 ns` |
-| `semantics_traversal_compiled` | `37.500 ns - 37.934 ns` |
-| `semantics_task_command_derivation_4k` | `283.97 ns - 287.82 ns` |
-| `semantics_task_command_playback_4k` | `37.739 us - 40.944 us` |
+| `semantics_snapshot_build_4k` | `1.1788 ms - 1.2537 ms` |
+| `semantics_snapshot_build_4k_tombstoned` | `1.3918 ms - 1.4499 ms` |
+| `semantics_snapshot_cached_4k` | `18.993 ns - 19.675 ns` |
+| `semantics_bulk_authoring_4k` | `2.4334 ms - 2.5356 ms` |
+| `semantics_lookup_kind_by_name` | `8.2561 ns - 8.6173 ns` |
+| `semantics_component_registration/cold_world` | `9.8476 us - 10.361 us` |
+| `semantics_component_registration/idempotent` | `12.678 ns - 13.389 ns` |
+| `semantics_component_registration/kind_to_component_lookup` | `1.6262 ns - 1.7140 ns` |
+| `semantics_is_a_direct` | `19.666 ns - 20.468 ns` |
+| `semantics_edge_query_dynamic` | `56.813 ns - 59.712 ns` |
+| `semantics_edge_query_compiled` | `38.923 ns - 41.236 ns` |
+| `semantics_traversal_dynamic` | `60.886 ns - 63.915 ns` |
+| `semantics_traversal_compiled` | `39.365 ns - 41.827 ns` |
+| `semantics_task_command_derivation_4k` | `329.07 ns - 344.58 ns` |
+| `semantics_task_command_playback_4k` | `43.020 us - 46.773 us` |
 
 ## Notes
 
