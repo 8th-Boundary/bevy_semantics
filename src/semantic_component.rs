@@ -109,6 +109,15 @@ impl SemanticWorldExt for World {
     where
         T: SemanticComponent,
     {
+        if let Some(component_id) = self
+            .get_resource::<SemanticComponents>()
+            .and_then(|mappings| mappings.component_id(T::KIND))
+        {
+            if self.component_id::<T>() == Some(component_id) {
+                return Ok(component_id);
+            }
+        }
+
         let generated = hash_canonical_name(T::KIND_NAME.trim());
         if T::KIND_NAME.trim().is_empty() || generated != T::KIND {
             return Err(SemanticError::StaticKindMismatch {

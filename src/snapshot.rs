@@ -73,12 +73,20 @@ pub(crate) struct TraversalParams<'a> {
 impl SemanticSnapshot {
     /// Build a snapshot from the current mutable registry state.
     pub(crate) fn from_registry(registry: &SemanticRegistry) -> Self {
-        let kinds = registry
-            .kinds
-            .iter()
-            .filter(|meta| !meta.is_tombstoned())
-            .map(|meta| meta.kind)
-            .collect::<Vec<_>>();
+        let kinds = if registry.tombstoned_count == 0 {
+            registry
+                .kinds
+                .iter()
+                .map(|meta| meta.kind)
+                .collect::<Vec<_>>()
+        } else {
+            registry
+                .kinds
+                .iter()
+                .filter(|meta| !meta.is_tombstoned())
+                .map(|meta| meta.kind)
+                .collect::<Vec<_>>()
+        };
 
         let mut kind_dense_index = HashMap::with_capacity(kinds.len());
         for (index, kind) in kinds.iter().copied().enumerate() {
@@ -88,14 +96,24 @@ impl SemanticSnapshot {
         let mut kind_by_name = HashMap::with_capacity(registry.kinds.len());
         let mut name_by_kind = HashMap::with_capacity(registry.kinds.len());
         let mut type_by_kind = HashMap::with_capacity(registry.kinds.len());
-        for meta in &registry.kinds {
-            if meta.is_tombstoned() {
-                continue;
+        if registry.tombstoned_count == 0 {
+            for meta in &registry.kinds {
+                kind_by_name.insert(meta.name.clone().into(), meta.kind);
+                name_by_kind.insert(meta.kind, meta.name.clone().into());
+                if let Some(type_id) = meta.type_id {
+                    type_by_kind.insert(meta.kind, type_id);
+                }
             }
-            kind_by_name.insert(meta.name.clone().into(), meta.kind);
-            name_by_kind.insert(meta.kind, meta.name.clone().into());
-            if let Some(type_id) = meta.type_id {
-                type_by_kind.insert(meta.kind, type_id);
+        } else {
+            for meta in &registry.kinds {
+                if meta.is_tombstoned() {
+                    continue;
+                }
+                kind_by_name.insert(meta.name.clone().into(), meta.kind);
+                name_by_kind.insert(meta.kind, meta.name.clone().into());
+                if let Some(type_id) = meta.type_id {
+                    type_by_kind.insert(meta.kind, type_id);
+                }
             }
         }
         let core = registry.core();
