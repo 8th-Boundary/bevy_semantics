@@ -14,6 +14,10 @@ static ATTACK: Kind = kind!("Attack");
 #[semantic(kind = "  Health  ")]
 struct Health;
 
+#[derive(Component, SemanticComponent)]
+#[semantic(kind = "Standalone", standalone)]
+struct Standalone;
+
 #[derive(Component)]
 struct Container<T>(T);
 
@@ -67,6 +71,7 @@ fn derive_and_concrete_generic_macro_expose_static_identity() {
     assert_eq!(Container::<u32>::KIND_NAME, "Container<u32>");
     assert_eq!(Container::<u32>::KIND, kind!("Container<u32>"));
     assert_ne!(Container::<u32>::KIND, Container::<String>::KIND);
+    assert_eq!(Standalone::KIND, kind!("Standalone"));
 }
 
 #[test]
