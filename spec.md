@@ -48,6 +48,7 @@ Rules:
 - The digest algorithm and domain prefix are chosen once for v1 and do not change without a breaking migration.
 - Registration checks for digest collisions and conflicting canonical names.
 - Re-registering the same canonical name returns the existing `Kind`.
+- `kind!("CanonicalName")` computes the same value during macro expansion and is valid in const contexts.
 
 Why 64-bit:
 - the internal hot path uses dense IDs, so the public ID size is not performance-critical
@@ -163,6 +164,26 @@ struct KindMeta {
 Implementation may keep separate internal dense remap tables.
 
 Flags should at minimum distinguish core, typed, and user-defined kinds.
+
+### 3.1 Static Component Identity
+
+`SemanticComponent` binds a Bevy component type to an explicit canonical name
+and compile-time `Kind`. The static identity exists without a registry. A
+non-generic type normally derives the implementation with
+`#[semantic(kind = "Name")]`.
+
+Each concrete monomorphization of an open generic component has a distinct
+`TypeId` and Bevy `ComponentId`; therefore it must also declare a distinct
+semantic identity with `semantic_component!(ConcreteType, kind = "Name")`.
+One family kind is not shared by several component types.
+
+World-local bindings are stored bidirectionally as `Kind -> ComponentId` and
+`ComponentId -> Kind`. They are strict, idempotent, and remain for the lifetime
+of the world. `ComponentId` is never persisted or placed in reusable plans.
+
+Static component kinds are identity-pinned. They cannot be unregistered, but
+may be tombstoned to remove them from ontology snapshots while retaining their
+stable name and Rust type binding.
 
 Rules:
 - registered kinds are immutable after creation

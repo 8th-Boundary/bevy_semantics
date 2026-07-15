@@ -1,0 +1,5 @@
+error: generic semantic components require an explicit concrete implementation; use `semantic_component!(Container<Concrete>, kind = "Container<Concrete>")`
+ --> tests/ui/derive_generic.rs:6:17
+  |
+6 | struct Container<T>(T);
+  |                 ^^^

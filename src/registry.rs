@@ -36,6 +36,8 @@ impl KindFlags {
     const CORE: Self = Self(1 << 0);
     const TYPED: Self = Self(1 << 1);
     const USER_DEFINED: Self = Self(1 << 2);
+    const STATIC_COMPONENT: Self = Self(1 << 3);
+    const TOMBSTONED: Self = Self(1 << 4);
 
     fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
@@ -43,6 +45,10 @@ impl KindFlags {
 
     fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
+    }
+
+    fn without(self, other: Self) -> Self {
+        Self(self.0 & !other.0)
     }
 }
 
@@ -52,6 +58,12 @@ pub(crate) struct KindMeta {
     pub(crate) name: Arc<str>,
     pub(crate) type_id: Option<TypeId>,
     pub(crate) flags: KindFlags,
+}
+
+impl KindMeta {
+    pub(crate) fn is_tombstoned(&self) -> bool {
+        self.flags.contains(KindFlags::TOMBSTONED)
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -108,7 +120,9 @@ impl SemanticRegistry {
     /// Register a new canonical kind name or return the existing `Kind`.
     pub fn register_kind(&mut self, name: impl AsRef<str>) -> Result<Kind, SemanticError> {
         let canonical = canonicalize_name(name.as_ref())?;
-        self.register_canonical_kind(canonical, None, KindFlags::USER_DEFINED)
+        let kind = self.register_canonical_kind(canonical, None, KindFlags::USER_DEFINED)?;
+        self.revive_kind(kind)?;
+        Ok(kind)
     }
 
     /// Register the Rust type `T` under its default canonical name.
@@ -135,6 +149,7 @@ impl SemanticRegistry {
         if let Some(existing_kind) = self.type_to_kind.get(&type_id).copied() {
             let existing_name = self.name(existing_kind).unwrap_or("<unknown>").to_string();
             if existing_name == canonical.as_ref() {
+                self.revive_kind(existing_kind)?;
                 return Ok(existing_kind);
             }
             return Err(SemanticError::KindTypeConflict {
@@ -144,7 +159,9 @@ impl SemanticRegistry {
             });
         }
 
-        self.register_canonical_kind(canonical, Some(type_id), KindFlags::TYPED)
+        let kind = self.register_canonical_kind(canonical, Some(type_id), KindFlags::TYPED)?;
+        self.revive_kind(kind)?;
+        Ok(kind)
     }
 
     fn register_core_kind(&mut self, name: impl AsRef<str>) -> Result<Kind, SemanticError> {
@@ -177,6 +194,122 @@ impl SemanticRegistry {
     /// Resolve the Rust `TypeId` bound to a `Kind`, if any.
     pub fn type_id(&self, kind: Kind) -> Option<TypeId> {
         self.kind_to_type.get(&kind).copied()
+    }
+
+    /// Return whether a registered kind is currently tombstoned.
+    pub fn is_tombstoned(&self, kind: Kind) -> Option<bool> {
+        self.kind_to_index
+            .get(&kind)
+            .and_then(|index| self.kinds.get(*index))
+            .map(|meta| meta.flags.contains(KindFlags::TOMBSTONED))
+    }
+
+    /// Tombstone a kind without discarding its stable identity or Rust type binding.
+    ///
+    /// Tombstoning removes incident ontology edges and excludes the kind from
+    /// snapshots. Static component kinds must be tombstoned rather than unregistered.
+    pub fn tombstone_kind(&mut self, kind: Kind) -> Result<bool, SemanticError> {
+        let index = self
+            .kind_to_index
+            .get(&kind)
+            .copied()
+            .ok_or(SemanticError::UnknownKind { kind })?;
+        if self.kinds[index].flags.contains(KindFlags::CORE) {
+            return Err(SemanticError::CannotUnregisterCoreKind { kind });
+        }
+        if self.kinds[index].flags.contains(KindFlags::TOMBSTONED) {
+            return Ok(false);
+        }
+
+        self.kinds[index].flags = self.kinds[index].flags.union(KindFlags::TOMBSTONED);
+        self.graph.edges.retain(|key, _| {
+            let (subject, relation, target) = *key;
+            subject != kind && relation != kind && target != kind
+        });
+        self.bump_version();
+        Ok(true)
+    }
+
+    /// Reactivate a tombstoned kind while preserving its identity and type binding.
+    pub fn revive_kind(&mut self, kind: Kind) -> Result<bool, SemanticError> {
+        let index = self
+            .kind_to_index
+            .get(&kind)
+            .copied()
+            .ok_or(SemanticError::UnknownKind { kind })?;
+        if !self.kinds[index].flags.contains(KindFlags::TOMBSTONED) {
+            return Ok(false);
+        }
+        self.kinds[index].flags = self.kinds[index].flags.without(KindFlags::TOMBSTONED);
+        self.bump_version();
+        Ok(true)
+    }
+
+    pub(crate) fn bind_static_component<T>(
+        &mut self,
+        name: &'static str,
+        declared: Kind,
+    ) -> Result<(), SemanticError>
+    where
+        T: 'static,
+    {
+        let canonical = canonicalize_name(name)?;
+        let generated = hash_canonical_name(canonical.as_ref());
+        if generated != declared {
+            return Err(SemanticError::StaticKindMismatch {
+                type_name: type_name::<T>(),
+                name,
+                declared,
+                generated,
+            });
+        }
+        if let Some(namespace) = reserved_namespace_root(canonical.as_ref()) {
+            return Err(SemanticError::CannotUseReservedNamespace {
+                namespace: namespace.to_string(),
+            });
+        }
+
+        let type_id = TypeId::of::<T>();
+        if let Some(existing_kind) = self.type_to_kind.get(&type_id).copied() {
+            if existing_kind != declared {
+                return Err(SemanticError::KindTypeConflict {
+                    kind: existing_kind,
+                    existing_type_name: self.name(existing_kind).unwrap_or("<unknown>").to_string(),
+                    requested_type_name: type_name::<T>().to_string(),
+                });
+            }
+        }
+
+        let registered = self.register_canonical_kind(
+            canonical,
+            Some(type_id),
+            KindFlags::TYPED.union(KindFlags::STATIC_COMPONENT),
+        )?;
+        if registered != declared {
+            return Err(SemanticError::StaticKindMismatch {
+                type_name: type_name::<T>(),
+                name,
+                declared,
+                generated: registered,
+            });
+        }
+        Ok(())
+    }
+
+    pub(crate) fn has_static_component_binding<T>(&self, name: &str, kind: Kind) -> bool
+    where
+        T: 'static,
+    {
+        let Some(index) = self.kind_to_index.get(&kind).copied() else {
+            return false;
+        };
+        let Some(meta) = self.kinds.get(index) else {
+            return false;
+        };
+        meta.name.as_ref() == name.trim()
+            && meta.flags.contains(KindFlags::STATIC_COMPONENT)
+            && self.type_to_kind.get(&TypeId::of::<T>()) == Some(&kind)
+            && self.kind_to_type.get(&kind) == Some(&TypeId::of::<T>())
     }
 
     /// Return the canonical core kinds and relations.
@@ -308,6 +441,12 @@ impl SemanticRegistry {
         if meta.flags.contains(KindFlags::CORE) {
             return Err(SemanticError::CannotUnregisterCoreKind { kind });
         }
+        if meta.flags.contains(KindFlags::STATIC_COMPONENT) {
+            return Err(SemanticError::CannotUnregisterStaticComponentKind {
+                kind,
+                name: meta.name.to_string(),
+            });
+        }
 
         if let Some(type_id) = meta.type_id {
             self.kind_to_type.remove(&kind);
@@ -353,6 +492,12 @@ impl SemanticRegistry {
             if meta.name.starts_with(prefix) {
                 if meta.flags.contains(KindFlags::CORE) {
                     return Err(SemanticError::CannotUnregisterCoreKind { kind: meta.kind });
+                }
+                if meta.flags.contains(KindFlags::STATIC_COMPONENT) {
+                    return Err(SemanticError::CannotUnregisterStaticComponentKind {
+                        kind: meta.kind,
+                        name: meta.name.to_string(),
+                    });
                 }
                 removed_kinds.push(meta.kind);
             }
@@ -445,6 +590,8 @@ impl SemanticRegistry {
                 self.unregister_namespace(namespace.as_ref())
             }
             SemanticCommand::UnregisterKind { kind } => self.unregister_kind(kind),
+            SemanticCommand::TombstoneKind { kind } => self.tombstone_kind(kind),
+            SemanticCommand::ReviveKind { kind } => self.revive_kind(kind),
             SemanticCommand::RemoveEdge {
                 subject,
                 relation,
@@ -484,6 +631,7 @@ impl SemanticRegistry {
         if let Some(existing_kind) = self.type_to_kind.get(&type_id).copied() {
             let existing_name = self.name(existing_kind).unwrap_or("<unknown>").to_string();
             if existing_name == canonical.as_ref() {
+                self.revive_kind(existing_kind)?;
                 return Ok(existing_kind);
             }
             return Err(SemanticError::KindTypeConflict {
@@ -493,7 +641,9 @@ impl SemanticRegistry {
             });
         }
 
-        self.register_canonical_kind(canonical, Some(type_id), KindFlags::TYPED)
+        let kind = self.register_canonical_kind(canonical, Some(type_id), KindFlags::TYPED)?;
+        self.revive_kind(kind)?;
+        Ok(kind)
     }
 
     fn register_canonical_kind(
@@ -597,9 +747,9 @@ impl SemanticRegistry {
         target: Kind,
         weight: Option<Weight>,
     ) -> Result<bool, SemanticError> {
-        self.ensure_known_kind(subject)?;
-        self.ensure_known_kind(relation)?;
-        self.ensure_known_kind(target)?;
+        self.ensure_active_kind(subject)?;
+        self.ensure_active_kind(relation)?;
+        self.ensure_active_kind(target)?;
 
         let key = (subject, relation, target);
         match self.graph.edges.get_mut(&key) {
@@ -622,6 +772,15 @@ impl SemanticRegistry {
             Ok(())
         } else {
             Err(SemanticError::UnknownKind { kind })
+        }
+    }
+
+    fn ensure_active_kind(&self, kind: Kind) -> Result<(), SemanticError> {
+        self.ensure_known_kind(kind)?;
+        if self.is_tombstoned(kind) == Some(true) {
+            Err(SemanticError::TombstonedKind { kind })
+        } else {
+            Ok(())
         }
     }
 
@@ -847,6 +1006,8 @@ fn is_reserved_namespace_name(name: &str) -> bool {
 }
 
 pub(crate) fn hash_canonical_name(name: &str) -> Kind {
+    // This is the runtime half of the stable Kind identity protocol. Keep it
+    // identical to `bevy_semantics_derive::canonical_kind`.
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"bevy_semantics.kind.v1:");
     hasher.update(name.as_bytes());

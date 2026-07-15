@@ -1,0 +1,5 @@
+error: duplicate `semantic` attributes
+ --> tests/ui/derive_duplicate.rs:5:1
+  |
+5 | #[semantic(kind = "One")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^

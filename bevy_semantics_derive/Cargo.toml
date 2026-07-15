@@ -1,0 +1,20 @@
+[package]
+name = "bevy_semantics_derive"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.95.0"
+description = "Compile-time semantic identity macros for bevy_semantics"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/8th-Boundary/bevy_semantics"
+homepage = "https://github.com/8th-Boundary/bevy_semantics"
+authors = ["8th Boundary"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+blake3 = "1"
+proc-macro-crate = "3"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }

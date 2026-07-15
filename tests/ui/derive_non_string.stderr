@@ -1,0 +1,5 @@
+error: expected string literal
+ --> tests/ui/derive_non_string.rs:5:19
+  |
+5 | #[semantic(kind = 123)]
+  |                   ^^^

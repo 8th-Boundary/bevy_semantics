@@ -1,0 +1,7 @@
+error: expected string literal
+ --> tests/ui/kind_non_string.rs:3:33
+  |
+3 | const _: bevy_semantics::Kind = kind!(123);
+  |                                 ^^^^^^^^^^
+  |
+  = note: this error originates in the macro `kind` (in Nightly builds, run with -Z macro-backtrace for more info)

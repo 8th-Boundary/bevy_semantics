@@ -1,0 +1,5 @@
+error: missing `#[semantic(kind = "CanonicalName")]` attribute
+ --> tests/ui/derive_missing.rs:5:8
+  |
+5 | struct Missing;
+  |        ^^^^^^^

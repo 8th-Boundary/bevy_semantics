@@ -48,6 +48,66 @@ Examples:
 - `preys_on`
 - `Forest`
 
+Static kinds can be declared without a registry or a Bevy world:
+
+```rust
+use bevy_semantics::{kind, Kind};
+
+pub const MOVE_TO: Kind = kind!("MoveTo");
+```
+
+`kind!` trims the literal and performs the stable, domain-separated BLAKE3
+calculation during macro expansion. The generated program contains the completed
+`u64`; declaring the constant does not register a name or Rust type at runtime.
+
+### Semantic Components
+
+A semantic component binds a Bevy component type to a static `Kind`:
+
+```rust
+use bevy_ecs::prelude::Component;
+use bevy_semantics::SemanticComponent;
+
+#[derive(Component, SemanticComponent)]
+#[semantic(kind = "Health")]
+struct Health {
+    current: f32,
+}
+```
+
+`Health::KIND` and `Health::KIND_NAME` are available without a registry or
+world. Installing `SemanticsPlugin` creates the world-local mapping resource,
+and explicit registration can prewarm the binding:
+
+```rust
+use bevy_semantics::{SemanticAppExt, SemanticsPlugin};
+
+# let mut app = bevy_app::App::new();
+app.add_plugins(SemanticsPlugin)
+    .register_semantic_component::<Health>();
+```
+
+Bevy `ComponentId` values are world-local, so they are never part of `Kind`, a
+snapshot, or reusable data. A registered component binding remains for the
+world's lifetime.
+
+Open generic definitions need a stable identity for each concrete
+monomorphization. Declare those explicitly:
+
+```rust
+use bevy_ecs::prelude::Component;
+use bevy_semantics::semantic_component;
+
+#[derive(Component)]
+struct Container<T>(T);
+
+semantic_component!(Container<u32>, kind = "Container<u32>");
+semantic_component!(Container<String>, kind = "Container<String>");
+```
+
+This keeps `Container<u32>` and `Container<String>` one-to-one with their own
+`TypeId`, `Kind`, and per-world `ComponentId`.
+
 ### Relation
 
 A relation is just a kind used in the relation slot of an edge.
@@ -98,6 +158,8 @@ Main methods:
 - `typed_kind::<T>()`
 - `typed_kind_named::<T>(name)`
 - `unregister_kind(kind)`
+- `tombstone_kind(kind)`
+- `revive_kind(kind)`
 - `unregister_namespace(namespace)`
 - `add_edge(subject, relation, target)`
 - `add_edge_weighted(subject, relation, target, weight)`
@@ -114,6 +176,12 @@ Main methods:
 
 `batch()` is for bulk authoring when you want to stage many writes and rebuild once at the end.
 
+Kinds pinned by static components cannot be unregistered because their Bevy
+component registration cannot be undone. They may be tombstoned instead.
+Tombstoning removes incident ontology edges and excludes the kind from
+snapshots while preserving its stable name and Rust type binding. Explicit
+`register_kind` or `revive_kind` reactivates it; component use alone does not.
+
 ### `Semantics`
 
 Use this as `Res<Semantics>` or `ResMut<Semantics>` in Bevy.
@@ -122,7 +190,7 @@ Use this as `Res<Semantics>` or `ResMut<Semantics>` in Bevy.
 - `ResMut<Semantics>` is the write side
 - direct reads live here: `kind`, `kind_of`, `name`, `core`
 - graph reads live here too: `is_a`, `targets`, `subjects`, `neighbors`, `reachable`, `can_reach`, `has_edge`
-- direct writes live here: `register_kind`, `typed_kind`, `typed_kind_named`, `unregister_kind`, `unregister_namespace`, `add_edge`, `add_edge_weighted`, `remove_edge`
+- direct writes live here: `register_kind`, `typed_kind`, `typed_kind_named`, `unregister_kind`, `tombstone_kind`, `revive_kind`, `unregister_namespace`, `add_edge`, `add_edge_weighted`, `remove_edge`
 - `snapshot()` returns the cached immutable read model for background work
 
 Example shape:
@@ -147,6 +215,8 @@ It supports:
 - `typed_kind`
 - `typed_kind_named`
 - `unregister_kind`
+- `tombstone_kind`
+- `revive_kind`
 - `unregister_namespace`
 - `add_edge`
 - `add_edge_weighted`
@@ -292,5 +362,5 @@ Measured with `cargo bench -p bevy_semantics --bench semantics_bench` on the mac
 
 - `Kind` and `Weight` are opaque newtypes, not type aliases.
 - Relations are unweighted by default. Use weighted edges only when the scalar matters.
-- Core kinds are protected. `unregister_kind` removes user kinds, their incident edges, and any typed binding, but core kinds cannot be removed.
+- Core kinds are protected. `unregister_kind` removes ordinary user kinds, their incident edges, and any typed binding. Static component kinds are identity-pinned and must be tombstoned instead.
 - The crate favors deterministic results and cached reads over write-side sophistication.

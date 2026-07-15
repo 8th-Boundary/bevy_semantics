@@ -1,0 +1,5 @@
+error: unknown semantic key; expected `kind`
+ --> tests/ui/derive_unknown.rs:5:12
+  |
+5 | #[semantic(name = "Unknown")]
+  |            ^^^^

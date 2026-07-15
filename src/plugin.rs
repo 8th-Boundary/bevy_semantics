@@ -10,7 +10,7 @@ use bevy_ecs::prelude::{Commands, ResMut, Resource, World};
 use crate::direction::EdgeDirection;
 use crate::query::SemanticCommand;
 use crate::registry::{canonicalize_name, hash_canonical_name};
-use crate::{Kind, SemanticError, SemanticRegistry, SemanticSnapshot, Weight};
+use crate::{Kind, SemanticComponents, SemanticError, SemanticRegistry, SemanticSnapshot, Weight};
 
 /// Bevy resource that owns semantic authoring state and the cached read model.
 #[derive(Resource, Debug, Clone, Default)]
@@ -60,6 +60,34 @@ impl Semantics {
     /// Unregister a kind immediately.
     pub fn unregister_kind(&mut self, kind: Kind) -> Result<bool, SemanticError> {
         self.0.unregister_kind(kind)
+    }
+
+    /// Tombstone a kind while retaining its stable identity and Rust type binding.
+    pub fn tombstone_kind(&mut self, kind: Kind) -> Result<bool, SemanticError> {
+        self.0.tombstone_kind(kind)
+    }
+
+    /// Reactivate a tombstoned kind.
+    pub fn revive_kind(&mut self, kind: Kind) -> Result<bool, SemanticError> {
+        self.0.revive_kind(kind)
+    }
+
+    pub(crate) fn bind_static_component<T>(
+        &mut self,
+        name: &'static str,
+        kind: Kind,
+    ) -> Result<(), SemanticError>
+    where
+        T: 'static,
+    {
+        self.0.bind_static_component::<T>(name, kind)
+    }
+
+    pub(crate) fn has_static_component_binding<T>(&self, name: &str, kind: Kind) -> bool
+    where
+        T: 'static,
+    {
+        self.0.has_static_component_binding::<T>(name, kind)
     }
 
     /// Return the seeded core handles.
@@ -209,6 +237,22 @@ impl<'a> SemanticEdit<'a> {
         self
     }
 
+    /// Tombstone a kind without removing its stable identity binding.
+    pub fn tombstone_kind(mut self, kind: Kind) -> Self {
+        if self.error.is_ok() {
+            self.error = self.semantics.0.tombstone_kind(kind).map(|_| ());
+        }
+        self
+    }
+
+    /// Reactivate a tombstoned kind.
+    pub fn revive_kind(mut self, kind: Kind) -> Self {
+        if self.error.is_ok() {
+            self.error = self.semantics.0.revive_kind(kind).map(|_| ());
+        }
+        self
+    }
+
     /// Unregister every kind under the given namespace prefix immediately.
     pub fn unregister_namespace(mut self, namespace: impl Into<Arc<str>>) -> Self {
         if self.error.is_ok() {
@@ -349,12 +393,13 @@ impl SemanticCommandQueue {
     }
 }
 
-/// Bevy plugin that installs the `Semantics` resource, task playback queue, and semantic command buffer.
+/// Bevy plugin that installs semantic state, component mappings, playback, and command buffers.
 pub struct SemanticsPlugin;
 
 impl Plugin for SemanticsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Semantics>()
+            .init_resource::<SemanticComponents>()
             .init_resource::<SemanticPlaybackQueue>()
             .init_resource::<SemanticCommandQueue>()
             .add_systems(PostUpdate, apply_semantic_commands);
@@ -367,6 +412,10 @@ pub trait SemanticCommandsExt<'w, 's> {
     fn register_kind(&mut self, name: impl Into<Arc<str>>) -> &mut Self;
 
     fn unregister_kind(&mut self, kind: Kind) -> &mut Self;
+
+    fn tombstone_kind(&mut self, kind: Kind) -> &mut Self;
+
+    fn revive_kind(&mut self, kind: Kind) -> &mut Self;
 
     fn unregister_namespace(&mut self, namespace: impl Into<Arc<str>>) -> &mut Self;
 
@@ -409,6 +458,26 @@ impl<'w, 's> SemanticCommandsExt<'w, 's> for Commands<'w, 's> {
                 .get_resource_mut::<SemanticCommandQueue>()
                 .expect("semantic command buffer is missing; add SemanticsPlugin first");
             queue.push(SemanticCommand::UnregisterKind { kind });
+        });
+        self
+    }
+
+    fn tombstone_kind(&mut self, kind: Kind) -> &mut Self {
+        self.queue(move |world: &mut World| {
+            let mut queue = world
+                .get_resource_mut::<SemanticCommandQueue>()
+                .expect("semantic command buffer is missing; add SemanticsPlugin first");
+            queue.push(SemanticCommand::TombstoneKind { kind });
+        });
+        self
+    }
+
+    fn revive_kind(&mut self, kind: Kind) -> &mut Self {
+        self.queue(move |world: &mut World| {
+            let mut queue = world
+                .get_resource_mut::<SemanticCommandQueue>()
+                .expect("semantic command buffer is missing; add SemanticsPlugin first");
+            queue.push(SemanticCommand::ReviveKind { kind });
         });
         self
     }

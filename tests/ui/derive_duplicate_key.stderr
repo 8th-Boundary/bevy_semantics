@@ -1,0 +1,5 @@
+error: duplicate `kind` key
+ --> tests/ui/derive_duplicate_key.rs:5:26
+  |
+5 | #[semantic(kind = "One", kind = "Two")]
+  |                          ^^^^

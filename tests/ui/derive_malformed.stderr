@@ -1,0 +1,5 @@
+error: unexpected literal in nested attribute, expected ident
+ --> tests/ui/derive_malformed.rs:5:12
+  |
+5 | #[semantic("Malformed")]
+  |            ^^^^^^^^^^^

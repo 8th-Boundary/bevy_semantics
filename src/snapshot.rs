@@ -76,6 +76,7 @@ impl SemanticSnapshot {
         let kinds = registry
             .kinds
             .iter()
+            .filter(|meta| !meta.is_tombstoned())
             .map(|meta| meta.kind)
             .collect::<Vec<_>>();
 
@@ -88,6 +89,9 @@ impl SemanticSnapshot {
         let mut name_by_kind = HashMap::with_capacity(registry.kinds.len());
         let mut type_by_kind = HashMap::with_capacity(registry.kinds.len());
         for meta in &registry.kinds {
+            if meta.is_tombstoned() {
+                continue;
+            }
             kind_by_name.insert(meta.name.clone().into(), meta.kind);
             name_by_kind.insert(meta.kind, meta.name.clone().into());
             if let Some(type_id) = meta.type_id {

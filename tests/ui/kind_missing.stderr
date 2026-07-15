@@ -1,0 +1,11 @@
+error: unexpected end of macro invocation
+ --> tests/ui/kind_missing.rs:3:33
+  |
+3 | const _: bevy_semantics::Kind = kind!();
+  |                                 ^^^^^^^ missing tokens in macro arguments
+  |
+note: while trying to match meta-variable `$name:literal`
+ --> src/lib.rs
+  |
+  |     ($name:literal) => {
+  |      ^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+error: semantic kind name cannot be empty
+ --> tests/ui/derive_empty.rs:5:19
+  |
+5 | #[semantic(kind = "   ")]
+  |                   ^^^^^

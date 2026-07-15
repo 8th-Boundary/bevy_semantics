@@ -1,0 +1,5 @@
+error: semantic kind name cannot be empty
+ --> tests/ui/kind_empty.rs:3:39
+  |
+3 | const _: bevy_semantics::Kind = kind!("   ");
+  |                                       ^^^^^

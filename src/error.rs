@@ -19,6 +19,13 @@ pub enum SemanticError {
     CannotUnregisterCoreKind {
         kind: Kind,
     },
+    CannotUnregisterStaticComponentKind {
+        kind: Kind,
+        name: String,
+    },
+    TombstonedKind {
+        kind: Kind,
+    },
     CannotUseReservedNamespace {
         namespace: String,
     },
@@ -26,6 +33,22 @@ pub enum SemanticError {
         kind: Kind,
         existing_type_name: String,
         requested_type_name: String,
+    },
+    StaticKindMismatch {
+        type_name: &'static str,
+        name: &'static str,
+        declared: Kind,
+        generated: Kind,
+    },
+    KindComponentConflict {
+        kind: Kind,
+        existing_component: usize,
+        requested_component: usize,
+    },
+    ComponentKindConflict {
+        component: usize,
+        existing_kind: Kind,
+        requested_kind: Kind,
     },
     EmptySeedSet,
     InvalidQueryState {
@@ -61,6 +84,13 @@ impl std::fmt::Display for SemanticError {
             SemanticError::CannotUnregisterCoreKind { kind } => {
                 write!(f, "cannot unregister core kind '{kind}'")
             }
+            SemanticError::CannotUnregisterStaticComponentKind { kind, name } => write!(
+                f,
+                "cannot unregister static component kind '{name}' ({kind}); tombstone it instead"
+            ),
+            SemanticError::TombstonedKind { kind } => {
+                write!(f, "kind '{kind}' is tombstoned")
+            }
             SemanticError::CannotUseReservedNamespace { namespace } => {
                 write!(f, "cannot use reserved namespace '{namespace}'")
             }
@@ -71,6 +101,31 @@ impl std::fmt::Display for SemanticError {
             } => write!(
                 f,
                 "kind '{kind}' already bound to type '{existing_type_name}', cannot bind to '{requested_type_name}'"
+            ),
+            SemanticError::StaticKindMismatch {
+                type_name,
+                name,
+                declared,
+                generated,
+            } => write!(
+                f,
+                "static semantic kind mismatch for {type_name}: name '{name}' generates {generated}, but the type declares {declared}"
+            ),
+            SemanticError::KindComponentConflict {
+                kind,
+                existing_component,
+                requested_component,
+            } => write!(
+                f,
+                "kind '{kind}' is already bound to component ID {existing_component}, cannot bind component ID {requested_component}"
+            ),
+            SemanticError::ComponentKindConflict {
+                component,
+                existing_kind,
+                requested_kind,
+            } => write!(
+                f,
+                "component ID {component} is already bound to kind '{existing_kind}', cannot bind kind '{requested_kind}'"
             ),
             SemanticError::EmptySeedSet => {
                 write!(f, "traversal query requires at least one seed kind")

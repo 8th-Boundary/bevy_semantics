@@ -61,6 +61,12 @@ pub enum SemanticCommand {
     UnregisterKind {
         kind: Kind,
     },
+    TombstoneKind {
+        kind: Kind,
+    },
+    ReviveKind {
+        kind: Kind,
+    },
     RegisterTypedKind {
         type_id: TypeId,
         name: Option<Arc<str>>,

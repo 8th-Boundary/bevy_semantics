@@ -1,0 +1,11 @@
+error: no rules expected `MoveTo`
+ --> tests/ui/kind_path.rs:3:39
+  |
+3 | const _: bevy_semantics::Kind = kind!(MoveTo);
+  |                                       ^^^^^^ no rules expected this token in macro call
+  |
+note: while trying to match meta-variable `$name:literal`
+ --> src/lib.rs
+  |
+  |     ($name:literal) => {
+  |      ^^^^^^^^^^^^^
