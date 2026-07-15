@@ -60,6 +60,45 @@ pub const MOVE_TO: Kind = kind!("MoveTo");
 calculation during macro expansion. The generated program contains the completed
 `u64`; declaring the constant does not register a name or Rust type at runtime.
 
+For a schema of related kinds, declare the constants and their registration
+descriptors together:
+
+```rust
+use bevy_semantics::{semantic_kinds, SemanticRegistry};
+
+semantic_kinds! {
+    pub const CREATURE_KINDS = {
+        CREATURE = "Creature",
+        WOLF = "Wolf",
+        PREYS_ON = "preys_on",
+    };
+}
+
+# fn register(registry: &mut SemanticRegistry) -> Result<(), bevy_semantics::SemanticError> {
+registry.register_consts(CREATURE_KINDS)?;
+# Ok(())
+# }
+```
+
+`CREATURE`, `WOLF`, and `PREYS_ON` are ordinary `Kind` constants. The generated
+`CREATURE_KINDS` slice retains their canonical names so a specific runtime
+registry can publish them in one transactional call. A compile-time macro cannot
+register globally because registries are runtime values and may be world-local.
+For a single named declaration, use `StaticKind`:
+
+```rust
+use bevy_semantics::{static_kind, SemanticRegistry, StaticKind};
+
+const CREATURE_DECL: StaticKind = static_kind!("Creature");
+
+# fn register(registry: &mut SemanticRegistry) -> Result<(), bevy_semantics::SemanticError> {
+registry.register_const(CREATURE_DECL)?;
+let creature = CREATURE_DECL.kind();
+# let _ = creature;
+# Ok(())
+# }
+```
+
 ### Semantic Components
 
 A semantic component binds a Bevy component type to a static `Kind`:
@@ -168,6 +207,8 @@ Use this when authoring outside Bevy or in setup code.
 
 Main methods:
 - `register_kind(name)`
+- `register_const(declaration)`
+- `register_consts(declarations)`
 - `typed_kind::<T>()`
 - `typed_kind_named::<T>(name)`
 - `unregister_kind(kind)`
@@ -203,7 +244,7 @@ Use this as `Res<Semantics>` or `ResMut<Semantics>` in Bevy.
 - `ResMut<Semantics>` is the write side
 - direct reads live here: `kind`, `kind_of`, `name`, `core`
 - graph reads live here too: `is_a`, `targets`, `subjects`, `neighbors`, `reachable`, `can_reach`, `has_edge`
-- direct writes live here: `register_kind`, `typed_kind`, `typed_kind_named`, `unregister_kind`, `tombstone_kind`, `revive_kind`, `unregister_namespace`, `add_edge`, `add_edge_weighted`, `remove_edge`
+- direct writes live here: `register_kind`, `register_const`, `register_consts`, `typed_kind`, `typed_kind_named`, `unregister_kind`, `tombstone_kind`, `revive_kind`, `unregister_namespace`, `add_edge`, `add_edge_weighted`, `remove_edge`
 - `snapshot()` returns the cached immutable read model for background work
 
 Example shape:
@@ -225,6 +266,8 @@ Use this for fluent bulk authoring.
 
 It supports:
 - `register_kind`
+- `register_const`
+- `register_consts`
 - `typed_kind`
 - `typed_kind_named`
 - `unregister_kind`
@@ -348,7 +391,7 @@ cargo run -p bevy_semantics --example task_playback
 cargo run -p bevy_semantics --example manual_registration
 ```
 
-- `semantics_basic` authors an ontology with explicit compile-time `kind!` constants.
+- `semantics_basic` authors an ontology with grouped compile-time `semantic_kinds!` constants.
 - `semantic_components` derives identities and registers concrete generic components.
 - `task_playback` shares compile-time kinds with a background task.
 - `manual_registration` demonstrates the older dynamic `register_kind` path without Bevy.
@@ -398,6 +441,7 @@ Measured with `cargo bench -p bevy_semantics --bench semantics_bench` on the mac
 | `semantics_snapshot_cached_4k` | `18.993 ns - 19.675 ns` |
 | `semantics_bulk_authoring_4k` | `2.4334 ms - 2.5356 ms` |
 | `semantics_lookup_kind_by_name` | `8.2561 ns - 8.6173 ns` |
+| `semantics_const_registration_8` | `3.2734 us - 3.5078 us` |
 | `semantics_component_registration/cold_world` | `9.8476 us - 10.361 us` |
 | `semantics_component_registration/idempotent` | `12.678 ns - 13.389 ns` |
 | `semantics_component_registration/kind_to_component_lookup` | `1.6262 ns - 1.7140 ns` |

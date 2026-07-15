@@ -1,26 +1,29 @@
 use bevy_app::{App, Last, Startup};
 use bevy_ecs::prelude::{Res, ResMut};
 use bevy_semantics::core::{INVERSE_OF, IS_A, RELATION};
-use bevy_semantics::kind;
-use bevy_semantics::prelude::{EdgeDirection, Kind, Semantics, SemanticsPlugin};
+use bevy_semantics::prelude::{semantic_kinds, EdgeDirection, Semantics, SemanticsPlugin};
 
-const CREATURE: Kind = kind!("Creature");
-const BEAST: Kind = kind!("Beast");
-const CANINE: Kind = kind!("Canine");
-const WOLF: Kind = kind!("Wolf");
-const RABBIT: Kind = kind!("Rabbit");
-const ITEM: Kind = kind!("Item");
-const RESOURCE: Kind = kind!("Resource");
-const HERB: Kind = kind!("Herb");
-const LOOT: Kind = kind!("Loot");
-const PELT: Kind = kind!("Pelt");
-const PLACE: Kind = kind!("Place");
-const FOREST: Kind = kind!("Forest");
-const PREYS_ON: Kind = kind!("preys_on");
-const PREDATED_BY: Kind = kind!("predated_by");
-const DROPS: Kind = kind!("drops");
-const DROPPED_BY: Kind = kind!("dropped_by");
-const GROWS_IN: Kind = kind!("grows_in");
+semantic_kinds! {
+    const DEMO_KINDS = {
+        CREATURE = "Creature",
+        BEAST = "Beast",
+        CANINE = "Canine",
+        WOLF = "Wolf",
+        RABBIT = "Rabbit",
+        ITEM = "Item",
+        RESOURCE = "Resource",
+        HERB = "Herb",
+        LOOT = "Loot",
+        PELT = "Pelt",
+        PLACE = "Place",
+        FOREST = "Forest",
+        PREYS_ON = "preys_on",
+        PREDATED_BY = "predated_by",
+        DROPS = "drops",
+        DROPPED_BY = "dropped_by",
+        GROWS_IN = "grows_in",
+    };
+}
 
 fn setup_semantics(mut semantics: ResMut<Semantics>) {
     // Bevy system functions stay simple here; the helper carries the fallible setup logic.
@@ -30,23 +33,7 @@ fn setup_semantics(mut semantics: ResMut<Semantics>) {
 }
 
 fn setup_semantics_impl(semantics: &mut Semantics) -> Result<(), bevy_semantics::SemanticError> {
-    assert_eq!(semantics.register_kind("Creature")?, CREATURE);
-    assert_eq!(semantics.register_kind("Beast")?, BEAST);
-    assert_eq!(semantics.register_kind("Canine")?, CANINE);
-    assert_eq!(semantics.register_kind("Wolf")?, WOLF);
-    assert_eq!(semantics.register_kind("Rabbit")?, RABBIT);
-    assert_eq!(semantics.register_kind("Item")?, ITEM);
-    assert_eq!(semantics.register_kind("Resource")?, RESOURCE);
-    assert_eq!(semantics.register_kind("Herb")?, HERB);
-    assert_eq!(semantics.register_kind("Loot")?, LOOT);
-    assert_eq!(semantics.register_kind("Pelt")?, PELT);
-    assert_eq!(semantics.register_kind("Place")?, PLACE);
-    assert_eq!(semantics.register_kind("Forest")?, FOREST);
-    assert_eq!(semantics.register_kind("preys_on")?, PREYS_ON);
-    assert_eq!(semantics.register_kind("predated_by")?, PREDATED_BY);
-    assert_eq!(semantics.register_kind("drops")?, DROPS);
-    assert_eq!(semantics.register_kind("dropped_by")?, DROPPED_BY);
-    assert_eq!(semantics.register_kind("grows_in")?, GROWS_IN);
+    semantics.register_consts(DEMO_KINDS)?;
 
     semantics.add_edge(PREYS_ON, IS_A, RELATION)?;
     semantics.add_edge(PREDATED_BY, IS_A, RELATION)?;

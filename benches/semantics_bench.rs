@@ -4,14 +4,27 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::World;
 use bevy_semantics::core::{CAN_BE, IS_A};
 use bevy_semantics::{
-    Kind, SemanticCommand, SemanticComponent, SemanticComponents, SemanticPlaybackQueue,
-    SemanticRegistry, SemanticWorldExt, Weight,
+    semantic_kinds, Kind, SemanticCommand, SemanticComponent, SemanticComponents,
+    SemanticPlaybackQueue, SemanticRegistry, SemanticWorldExt, Weight,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 const NODE_COUNT: usize = 4_096;
 const LINK_STRIDE: usize = 16;
 const TRAVERSAL_DEPTH: usize = 128;
+
+semantic_kinds! {
+    const BENCH_CONST_KINDS = {
+        CONST_KIND_A = "ConstKindA",
+        CONST_KIND_B = "ConstKindB",
+        CONST_KIND_C = "ConstKindC",
+        CONST_KIND_D = "ConstKindD",
+        CONST_RELATION_A = "const_relation_a",
+        CONST_RELATION_B = "const_relation_b",
+        CONST_RELATION_C = "const_relation_c",
+        CONST_RELATION_D = "const_relation_d",
+    };
+}
 
 #[derive(Component, SemanticComponent)]
 #[semantic(kind = "BenchComponent")]
@@ -180,6 +193,21 @@ fn bench_lookup_kind_by_name(c: &mut Criterion) {
     });
 }
 
+fn bench_const_registration(c: &mut Criterion) {
+    c.bench_function("semantics_const_registration_8", |b| {
+        b.iter_batched(
+            SemanticRegistry::default,
+            |mut registry| {
+                registry
+                    .register_consts(black_box(BENCH_CONST_KINDS))
+                    .expect("compile-time kind group registration");
+                black_box(registry);
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+}
+
 fn bench_semantic_component_registration(c: &mut Criterion) {
     let mut group = c.benchmark_group("semantics_component_registration");
 
@@ -333,6 +361,7 @@ criterion_group!(
     bench_snapshot_cached,
     bench_bulk_authoring,
     bench_lookup_kind_by_name,
+    bench_const_registration,
     bench_semantic_component_registration,
     bench_is_a_direct,
     bench_edge_query_dynamic,

@@ -15,6 +15,7 @@ pub mod query;
 pub mod registry;
 pub mod semantic_component;
 pub mod snapshot;
+pub mod static_kind;
 pub mod weight;
 
 pub mod plugin;
@@ -33,8 +34,9 @@ pub mod prelude {
     pub use crate::registry::{Core, SemanticRegistry, SemanticRegistryBatch};
     pub use crate::semantic_component::{SemanticAppExt, SemanticComponents, SemanticWorldExt};
     pub use crate::snapshot::SemanticSnapshot;
+    pub use crate::static_kind::StaticKind;
     pub use crate::weight::Weight;
-    pub use crate::{kind, semantic_component, SemanticComponent};
+    pub use crate::{kind, semantic_component, semantic_kinds, static_kind, SemanticComponent};
 }
 
 pub use direction::EdgeDirection;
@@ -49,6 +51,7 @@ pub use semantic_component::{
     SemanticAppExt, SemanticComponent, SemanticComponents, SemanticWorldExt,
 };
 pub use snapshot::SemanticSnapshot;
+pub use static_kind::StaticKind;
 pub use weight::Weight;
 
 pub use plugin::{CommandsExt, SemanticEdit, SemanticPlaybackQueue, Semantics, SemanticsPlugin};
@@ -62,5 +65,43 @@ pub use bevy_semantics_derive::{semantic_component, SemanticComponent};
 macro_rules! kind {
     ($name:literal) => {
         $crate::Kind::from_raw($crate::__kind_raw!($name))
+    };
+}
+
+/// Declare one compile-time kind while retaining its name for registration.
+#[macro_export]
+macro_rules! static_kind {
+    ($name:literal) => {
+        $crate::StaticKind::from_raw_parts($name, $crate::kind!($name))
+    };
+}
+
+/// Declare related [`Kind`] constants and a registration descriptor slice.
+///
+/// The generated individual constants remain plain [`Kind`] values, while the
+/// named slice can be passed to `register_consts` on [`SemanticRegistry`] or
+/// [`Semantics`].
+#[macro_export]
+macro_rules! semantic_kinds {
+    (
+        $(#[$group_meta:meta])*
+        $vis:vis const $group:ident = {
+            $(
+                $(#[$kind_meta:meta])*
+                $constant:ident = $name:literal
+            ),+ $(,)?
+        };
+    ) => {
+        $(
+            $(#[$kind_meta])*
+            $vis const $constant: $crate::Kind = $crate::kind!($name);
+        )+
+
+        $(#[$group_meta])*
+        $vis const $group: &[$crate::StaticKind] = &[
+            $(
+                $crate::StaticKind::from_raw_parts($name, $constant)
+            ),+
+        ];
     };
 }

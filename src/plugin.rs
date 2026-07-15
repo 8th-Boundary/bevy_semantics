@@ -10,7 +10,9 @@ use bevy_ecs::prelude::{Commands, ResMut, Resource, World};
 use crate::direction::EdgeDirection;
 use crate::query::SemanticCommand;
 use crate::registry::{canonicalize_name, hash_canonical_name};
-use crate::{Kind, SemanticComponents, SemanticError, SemanticRegistry, SemanticSnapshot, Weight};
+use crate::{
+    Kind, SemanticComponents, SemanticError, SemanticRegistry, SemanticSnapshot, StaticKind, Weight,
+};
 
 /// Bevy resource that owns semantic authoring state and the cached read model.
 #[derive(Resource, Debug, Clone, Default)]
@@ -39,6 +41,16 @@ impl Semantics {
     /// Register a canonical kind immediately.
     pub fn register_kind(&mut self, name: impl AsRef<str>) -> Result<Kind, SemanticError> {
         self.0.register_kind(name)
+    }
+
+    /// Register one compile-time kind declaration immediately.
+    pub fn register_const(&mut self, declaration: StaticKind) -> Result<Kind, SemanticError> {
+        self.0.register_const(declaration)
+    }
+
+    /// Register a group of compile-time kind declarations immediately.
+    pub fn register_consts(&mut self, declarations: &[StaticKind]) -> Result<(), SemanticError> {
+        self.0.register_consts(declarations)
     }
 
     /// Register the Rust type `T` under its default canonical name.
@@ -225,6 +237,22 @@ impl<'a> SemanticEdit<'a> {
         if self.error.is_ok() {
             let name = name.into();
             self.error = self.semantics.0.register_kind(name.as_ref()).map(|_| ());
+        }
+        self
+    }
+
+    /// Register one compile-time kind declaration immediately.
+    pub fn register_const(mut self, declaration: StaticKind) -> Self {
+        if self.error.is_ok() {
+            self.error = self.semantics.0.register_const(declaration).map(|_| ());
+        }
+        self
+    }
+
+    /// Register a group of compile-time kind declarations immediately.
+    pub fn register_consts(mut self, declarations: &[StaticKind]) -> Self {
+        if self.error.is_ok() {
+            self.error = self.semantics.0.register_consts(declarations);
         }
         self
     }

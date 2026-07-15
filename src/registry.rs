@@ -11,6 +11,7 @@ use crate::kind::Kind;
 use crate::query::SemanticCommand;
 use crate::snapshot::SemanticSnapshot;
 use crate::weight::Weight;
+use crate::StaticKind;
 
 type SnapshotCache = Arc<RwLock<Option<(u64, Arc<SemanticSnapshot>)>>>;
 
@@ -123,6 +124,56 @@ impl SemanticRegistry {
     pub fn register_kind(&mut self, name: impl AsRef<str>) -> Result<Kind, SemanticError> {
         let canonical = canonicalize_name(name.as_ref())?;
         self.register_canonical_kind(canonical, None, KindFlags::USER_DEFINED, true)
+    }
+
+    /// Register one compile-time kind declaration or return its existing ID.
+    pub fn register_const(&mut self, declaration: StaticKind) -> Result<Kind, SemanticError> {
+        self.register_consts(core::slice::from_ref(&declaration))?;
+        Ok(declaration.kind())
+    }
+
+    /// Register a group of compile-time kind declarations transactionally.
+    ///
+    /// Every name, identity, and collision is validated before the registry is
+    /// mutated. Existing declarations are idempotent and tombstoned kinds are
+    /// revived just like an explicit [`Self::register_kind`] call.
+    pub fn register_consts(&mut self, declarations: &[StaticKind]) -> Result<(), SemanticError> {
+        let mut validated = Vec::with_capacity(declarations.len());
+        let mut names = HashMap::<Arc<str>, Kind>::with_capacity(declarations.len());
+        let mut kinds = HashMap::<Kind, Arc<str>>::with_capacity(declarations.len());
+
+        for declaration in declarations.iter().copied() {
+            let canonical = self.validate_static_kind(declaration)?;
+
+            if let Some(existing_kind) = names.get(canonical.as_ref()).copied() {
+                if existing_kind != declaration.kind() {
+                    return Err(SemanticError::KindHashCollision {
+                        kind: declaration.kind(),
+                        existing_name: canonical.to_string(),
+                        requested_name: declaration.name().to_string(),
+                    });
+                }
+            }
+            if let Some(existing_name) = kinds.get(&declaration.kind()) {
+                if existing_name.as_ref() != canonical.as_ref() {
+                    return Err(SemanticError::KindHashCollision {
+                        kind: declaration.kind(),
+                        existing_name: existing_name.to_string(),
+                        requested_name: canonical.to_string(),
+                    });
+                }
+            }
+
+            names.insert(canonical.clone(), declaration.kind());
+            kinds.insert(declaration.kind(), canonical.clone());
+            validated.push(canonical);
+        }
+
+        let mut batch = self.batch();
+        for canonical in validated {
+            batch.register_kind(canonical.as_ref())?;
+        }
+        Ok(())
     }
 
     /// Register the Rust type `T` under its default canonical name.
@@ -776,6 +827,36 @@ impl SemanticRegistry {
         Ok(kind)
     }
 
+    fn validate_static_kind(&self, declaration: StaticKind) -> Result<Arc<str>, SemanticError> {
+        let canonical = canonicalize_name(declaration.name())?;
+        let generated = hash_canonical_name(canonical.as_ref());
+        if generated != declaration.kind() {
+            return Err(SemanticError::StaticKindDefinitionMismatch {
+                name: declaration.name(),
+                declared: declaration.kind(),
+                generated,
+            });
+        }
+        if let Some(namespace) = reserved_namespace_root(canonical.as_ref()) {
+            return Err(SemanticError::CannotUseReservedNamespace {
+                namespace: namespace.to_string(),
+            });
+        }
+
+        if let Some(existing_index) = self.kind_to_index.get(&declaration.kind()).copied() {
+            let existing_name = self.kinds[existing_index].name.as_ref();
+            if existing_name != canonical.as_ref() {
+                return Err(SemanticError::KindHashCollision {
+                    kind: declaration.kind(),
+                    existing_name: existing_name.to_string(),
+                    requested_name: canonical.to_string(),
+                });
+            }
+        }
+
+        Ok(canonical)
+    }
+
     fn upsert_edge(
         &mut self,
         subject: Kind,
@@ -880,6 +961,22 @@ impl<'a> SemanticRegistryBatch<'a> {
         let kind = self.registry.register_kind(name)?;
         self.changed |= self.registry.version() != before;
         Ok(kind)
+    }
+
+    /// Register one compile-time kind declaration in this bulk-edit session.
+    pub fn register_const(&mut self, declaration: StaticKind) -> Result<Kind, SemanticError> {
+        let before = self.registry.version();
+        let kind = self.registry.register_const(declaration)?;
+        self.changed |= self.registry.version() != before;
+        Ok(kind)
+    }
+
+    /// Register compile-time kind declarations in this bulk-edit session.
+    pub fn register_consts(&mut self, declarations: &[StaticKind]) -> Result<(), SemanticError> {
+        let before = self.registry.version();
+        self.registry.register_consts(declarations)?;
+        self.changed |= self.registry.version() != before;
+        Ok(())
     }
 
     pub fn typed_kind<T>(&mut self) -> Result<Kind, SemanticError>
