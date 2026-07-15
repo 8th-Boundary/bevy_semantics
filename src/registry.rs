@@ -319,16 +319,37 @@ impl SemanticRegistry {
     }
 
     fn seed_core(&mut self) -> Result<Core, SemanticError> {
-        let relation = self.register_core_kind("Relation")?;
-        let namespace = self.register_core_kind("Namespace")?;
-        let is_a = self.register_core_kind("is_a")?;
-        let not_a = self.register_core_kind("not_a")?;
-        let can_be = self.register_core_kind("can_be")?;
-        let cant_be = self.register_core_kind("cant_be")?;
-        let has_part = self.register_core_kind("has_part")?;
-        let part_of = self.register_core_kind("part_of")?;
-        let inverse_of = self.register_core_kind("inverse_of")?;
-        let negates = self.register_core_kind("negates")?;
+        let core_kinds = [
+            ("Relation", crate::core::RELATION),
+            ("Namespace", crate::core::NAMESPACE),
+            ("is_a", crate::core::IS_A),
+            ("not_a", crate::core::NOT_A),
+            ("can_be", crate::core::CAN_BE),
+            ("cant_be", crate::core::CANT_BE),
+            ("has_part", crate::core::HAS_PART),
+            ("part_of", crate::core::PART_OF),
+            ("inverse_of", crate::core::INVERSE_OF),
+            ("negates", crate::core::NEGATES),
+        ];
+
+        for (name, expected) in core_kinds {
+            let registered = self.register_core_kind(name)?;
+            assert_eq!(
+                registered, expected,
+                "compile-time and runtime core kind identities must match"
+            );
+        }
+
+        let relation = crate::core::RELATION;
+        let namespace = crate::core::NAMESPACE;
+        let is_a = crate::core::IS_A;
+        let not_a = crate::core::NOT_A;
+        let can_be = crate::core::CAN_BE;
+        let cant_be = crate::core::CANT_BE;
+        let has_part = crate::core::HAS_PART;
+        let part_of = crate::core::PART_OF;
+        let inverse_of = crate::core::INVERSE_OF;
+        let negates = crate::core::NEGATES;
 
         for kind in [
             relation, is_a, not_a, can_be, cant_be, has_part, part_of, inverse_of, negates,

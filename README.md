@@ -273,6 +273,24 @@ Use this when you want to stage semantic edits from ordinary Bevy systems.
 The crate seeds a small set of core kinds automatically.
 User code does not need to call an "ensure core" function.
 
+Their stable identities are available as compile-time constants:
+
+```rust
+use bevy_semantics::core::{IS_A, RELATION};
+
+# fn example(
+#     semantics: &mut bevy_semantics::Semantics,
+#     preys_on: bevy_semantics::Kind,
+# ) -> Result<(), bevy_semantics::SemanticError> {
+semantics.add_edge(preys_on, IS_A, RELATION)?;
+# Ok(())
+# }
+```
+
+Import only the constants an application uses. The existing `registry.core()`,
+`semantics.core()`, and `snapshot.core()` accessors remain available when a
+grouped runtime value is more convenient.
+
 The crate reserves the `Core` namespace for itself, but the seeded core kinds use plain names:
 
 | Core kind | Use case |

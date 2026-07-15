@@ -1,6 +1,7 @@
 use bevy_app::{App, Last, Startup, Update};
 use bevy_ecs::prelude::{Res, ResMut, Resource};
 use bevy_ecs::schedule::IntoScheduleConfigs;
+use bevy_semantics::core::{INVERSE_OF, IS_A, RELATION};
 use bevy_semantics::prelude::*;
 use bevy_tasks::{futures_lite::future, AsyncComputeTaskPool, Task, TaskPool};
 
@@ -45,8 +46,6 @@ fn setup_semantics_impl(
     semantics: &mut Semantics,
     task_state: &mut TaskState,
 ) -> Result<(), SemanticError> {
-    let core = semantics.core();
-
     // Registration publishes the names and graph nodes at runtime. Each result
     // must match the compile-time identity declared above.
     assert_eq!(semantics.register_kind("Creature")?, CREATURE);
@@ -67,26 +66,26 @@ fn setup_semantics_impl(
     assert_eq!(semantics.register_kind("dropped_by")?, DROPPED_BY);
     assert_eq!(semantics.register_kind("grows_in")?, GROWS_IN);
 
-    semantics.add_edge(PREYS_ON, core.is_a, core.relation)?;
-    semantics.add_edge(PREDATED_BY, core.is_a, core.relation)?;
-    semantics.add_edge(DROPS, core.is_a, core.relation)?;
-    semantics.add_edge(DROPPED_BY, core.is_a, core.relation)?;
-    semantics.add_edge(GROWS_IN, core.is_a, core.relation)?;
+    semantics.add_edge(PREYS_ON, IS_A, RELATION)?;
+    semantics.add_edge(PREDATED_BY, IS_A, RELATION)?;
+    semantics.add_edge(DROPS, IS_A, RELATION)?;
+    semantics.add_edge(DROPPED_BY, IS_A, RELATION)?;
+    semantics.add_edge(GROWS_IN, IS_A, RELATION)?;
 
-    semantics.add_edge(PREYS_ON, core.inverse_of, PREDATED_BY)?;
-    semantics.add_edge(PREDATED_BY, core.inverse_of, PREYS_ON)?;
-    semantics.add_edge(DROPS, core.inverse_of, DROPPED_BY)?;
-    semantics.add_edge(DROPPED_BY, core.inverse_of, DROPS)?;
+    semantics.add_edge(PREYS_ON, INVERSE_OF, PREDATED_BY)?;
+    semantics.add_edge(PREDATED_BY, INVERSE_OF, PREYS_ON)?;
+    semantics.add_edge(DROPS, INVERSE_OF, DROPPED_BY)?;
+    semantics.add_edge(DROPPED_BY, INVERSE_OF, DROPS)?;
 
-    semantics.add_edge(BEAST, core.is_a, CREATURE)?;
-    semantics.add_edge(CANINE, core.is_a, BEAST)?;
-    semantics.add_edge(WOLF, core.is_a, CANINE)?;
-    semantics.add_edge(RABBIT, core.is_a, BEAST)?;
-    semantics.add_edge(RESOURCE, core.is_a, ITEM)?;
-    semantics.add_edge(HERB, core.is_a, RESOURCE)?;
-    semantics.add_edge(LOOT, core.is_a, ITEM)?;
-    semantics.add_edge(PELT, core.is_a, LOOT)?;
-    semantics.add_edge(FOREST, core.is_a, PLACE)?;
+    semantics.add_edge(BEAST, IS_A, CREATURE)?;
+    semantics.add_edge(CANINE, IS_A, BEAST)?;
+    semantics.add_edge(WOLF, IS_A, CANINE)?;
+    semantics.add_edge(RABBIT, IS_A, BEAST)?;
+    semantics.add_edge(RESOURCE, IS_A, ITEM)?;
+    semantics.add_edge(HERB, IS_A, RESOURCE)?;
+    semantics.add_edge(LOOT, IS_A, ITEM)?;
+    semantics.add_edge(PELT, IS_A, LOOT)?;
+    semantics.add_edge(FOREST, IS_A, PLACE)?;
 
     semantics.add_edge(WOLF, PREYS_ON, RABBIT)?;
     semantics.add_edge(WOLF, DROPS, PELT)?;

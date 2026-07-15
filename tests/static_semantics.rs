@@ -2,6 +2,9 @@ use core::any::TypeId;
 
 use bevy_app::App;
 use bevy_ecs::component::Component;
+use bevy_semantics::core::{
+    CANT_BE, CAN_BE, HAS_PART, INVERSE_OF, IS_A, NAMESPACE, NEGATES, NOT_A, PART_OF, RELATION,
+};
 use bevy_semantics::{
     kind, semantic_component, Kind, SemanticAppExt, SemanticComponent, SemanticComponents,
     SemanticError, SemanticRegistry, SemanticWorldExt, Semantics, SemanticsPlugin,
@@ -62,6 +65,23 @@ fn kind_macro_is_const_and_matches_runtime_protocol() -> Result<(), SemanticErro
         assert_eq!(compile_time, runtime);
     }
     Ok(())
+}
+
+#[test]
+fn core_constants_match_the_seeded_registry() {
+    let registry = SemanticRegistry::default();
+    let seeded = registry.core();
+
+    assert_eq!(seeded.relation, RELATION);
+    assert_eq!(seeded.namespace, NAMESPACE);
+    assert_eq!(seeded.is_a, IS_A);
+    assert_eq!(seeded.not_a, NOT_A);
+    assert_eq!(seeded.can_be, CAN_BE);
+    assert_eq!(seeded.cant_be, CANT_BE);
+    assert_eq!(seeded.has_part, HAS_PART);
+    assert_eq!(seeded.part_of, PART_OF);
+    assert_eq!(seeded.inverse_of, INVERSE_OF);
+    assert_eq!(seeded.negates, NEGATES);
 }
 
 #[test]

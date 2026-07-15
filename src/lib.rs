@@ -7,6 +7,7 @@
 
 extern crate self as bevy_semantics;
 
+pub mod core;
 pub mod direction;
 pub mod error;
 pub mod kind;

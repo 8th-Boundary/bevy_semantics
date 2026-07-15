@@ -8,6 +8,7 @@ All notable changes to `bevy_semantics` will be documented in this file.
 - Removed the unintended `Resource` derive from `SemanticEdge` to keep semantic edge records out of Bevy 0.19's resources-as-components model.
 - Added release metadata for crates.io/docs.rs publication.
 - Added compile-time `kind!`, `SemanticComponent`, its derive, and explicit concrete generic-instantiation support.
+- Added compile-time constants for every seeded kind under `bevy_semantics::core`.
 - Added world-local, bidirectional `Kind`/`ComponentId` registration through `SemanticWorldExt` and `SemanticAppExt`.
 - Added identity pinning and explicit tombstone/revival for static component kinds.
 
