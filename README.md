@@ -64,7 +64,7 @@ For a schema of related kinds, declare the constants and their registration
 descriptors together:
 
 ```rust
-use bevy_semantics::{semantic_kinds, SemanticRegistry};
+use bevy_semantics::{semantic_kinds, SemanticError, SemanticRegistry};
 
 semantic_kinds! {
     pub const CREATURE_KINDS = {
@@ -74,10 +74,9 @@ semantic_kinds! {
     };
 }
 
-# fn register(registry: &mut SemanticRegistry) -> Result<(), bevy_semantics::SemanticError> {
-registry.register_consts(CREATURE_KINDS)?;
-# Ok(())
-# }
+fn register_schema(registry: &mut SemanticRegistry) -> Result<(), SemanticError> {
+    registry.register_consts(CREATURE_KINDS)
+}
 ```
 
 `CREATURE`, `WOLF`, and `PREYS_ON` are ordinary `Kind` constants. The generated
@@ -87,16 +86,14 @@ register globally because registries are runtime values and may be world-local.
 For a single named declaration, use `StaticKind`:
 
 ```rust
-use bevy_semantics::{static_kind, SemanticRegistry, StaticKind};
+use bevy_semantics::{static_kind, Kind, SemanticError, SemanticRegistry, StaticKind};
 
 const CREATURE_DECL: StaticKind = static_kind!("Creature");
 
-# fn register(registry: &mut SemanticRegistry) -> Result<(), bevy_semantics::SemanticError> {
-registry.register_const(CREATURE_DECL)?;
-let creature = CREATURE_DECL.kind();
-# let _ = creature;
-# Ok(())
-# }
+fn register_creature(registry: &mut SemanticRegistry) -> Result<Kind, SemanticError> {
+    registry.register_const(CREATURE_DECL)?;
+    Ok(CREATURE_DECL.kind())
+}
 ```
 
 ### Semantic Components
@@ -119,9 +116,10 @@ world. Installing `SemanticsPlugin` creates the world-local mapping resource,
 and explicit registration can prewarm the binding:
 
 ```rust
+use bevy_app::App;
 use bevy_semantics::{SemanticAppExt, SemanticsPlugin};
 
-# let mut app = bevy_app::App::new();
+let mut app = App::new();
 app.add_plugins(SemanticsPlugin)
     .register_semantic_component::<Health>();
 ```
@@ -320,14 +318,12 @@ Their stable identities are available as compile-time constants:
 
 ```rust
 use bevy_semantics::core::{IS_A, RELATION};
+use bevy_semantics::{Kind, SemanticError, Semantics};
 
-# fn example(
-#     semantics: &mut bevy_semantics::Semantics,
-#     preys_on: bevy_semantics::Kind,
-# ) -> Result<(), bevy_semantics::SemanticError> {
-semantics.add_edge(preys_on, IS_A, RELATION)?;
-# Ok(())
-# }
+fn classify_relation(semantics: &mut Semantics, relation: Kind) -> Result<(), SemanticError> {
+    semantics.add_edge(relation, IS_A, RELATION)?;
+    Ok(())
+}
 ```
 
 Import only the constants an application uses. The existing `registry.core()`,
