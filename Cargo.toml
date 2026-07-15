@@ -13,10 +13,6 @@ authors = ["8th Boundary"]
 keywords = ["bevy", "semantics", "ontology", "graph"]
 categories = ["game-development"]
 
-[workspace]
-resolver = "2"
-members = ["bevy_semantics_derive"]
-
 [dependencies]
 blake3 = "1"
 bevy_app = "0.19"
