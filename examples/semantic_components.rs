@@ -21,6 +21,8 @@ fn main() {
     assert_eq!(HEALTH_CONTAINER, Container::<Health>::KIND);
 
     let mut app = App::new();
+    // Component registration publishes each type's `KIND_NAME` automatically,
+    // so semantic components do not need a separate `KindRegistration` slice.
     app.add_plugins(SemanticsPlugin)
         .register_semantic_component::<Health>()
         .register_semantic_component::<Container<Health>>();

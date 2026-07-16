@@ -1,8 +1,12 @@
 use bevy_app::{App, Last, Startup};
 use bevy_ecs::prelude::{Res, ResMut};
 use bevy_semantics::core::{INVERSE_OF, IS_A, RELATION};
-use bevy_semantics::prelude::{semantic_kinds, EdgeDirection, Semantics, SemanticsPlugin};
+use bevy_semantics::prelude::{
+    semantic_kinds, EdgeDirection, KindRegistration, Semantics, SemanticsPlugin,
+};
 
+// This emits each plain `Kind` constant plus a borrowed
+// `&[KindRegistration]` named `DEMO_KINDS` for one-call registration.
 semantic_kinds! {
     const DEMO_KINDS = {
         CREATURE = "Creature",
@@ -33,7 +37,8 @@ fn setup_semantics(mut semantics: ResMut<Semantics>) {
 }
 
 fn setup_semantics_impl(semantics: &mut Semantics) -> Result<(), bevy_semantics::SemanticError> {
-    semantics.register_consts(DEMO_KINDS)?;
+    let registrations: &[KindRegistration] = DEMO_KINDS;
+    semantics.register_consts(registrations)?;
 
     semantics.add_edge(PREYS_ON, IS_A, RELATION)?;
     semantics.add_edge(PREDATED_BY, IS_A, RELATION)?;

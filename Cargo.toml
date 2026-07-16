@@ -39,6 +39,9 @@ name = "semantic_components"
 [[example]]
 name = "manual_registration"
 
+[[example]]
+name = "compile_time_registration"
+
 [[bench]]
 name = "semantics_bench"
 harness = false

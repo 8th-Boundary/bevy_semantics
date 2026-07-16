@@ -1,4 +1,4 @@
-//! Runtime/manual kind registration without Bevy or compile-time declarations.
+//! The older runtime/manual path without compile-time declarations.
 
 use bevy_semantics::{SemanticError, SemanticRegistry};
 
@@ -6,9 +6,8 @@ fn main() -> Result<(), SemanticError> {
     let mut registry = SemanticRegistry::default();
     let core = registry.core();
 
-    // This is the dynamic path: each canonical name is converted to a Kind and
-    // registered at runtime. Prefer `const WOLF: Kind = kind!("Wolf")` when a
-    // name is known while compiling the program.
+    // This intentionally avoids `kind!`, `KindRegistration`, and
+    // `semantic_kinds!` to demonstrate names discovered only at runtime.
     let creature = registry.register_kind("Creature")?;
     let wolf = registry.register_kind("Wolf")?;
     let preys_on = registry.register_kind("preys_on")?;

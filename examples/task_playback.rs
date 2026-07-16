@@ -7,7 +7,7 @@ use bevy_tasks::{futures_lite::future, AsyncComputeTaskPool, Task, TaskPool};
 
 // These IDs are available at compile time and can be shared by systems, tasks,
 // and semantic components without consulting a runtime registry. The generated
-// descriptor slice publishes all their names to a registry in one call.
+// `&[KindRegistration]` tuple slice publishes all their names in one call.
 semantic_kinds! {
     const DEMO_KINDS = {
         CREATURE = "Creature",
@@ -51,7 +51,8 @@ fn setup_semantics_impl(
     semantics: &mut Semantics,
     task_state: &mut TaskState,
 ) -> Result<(), SemanticError> {
-    semantics.register_consts(DEMO_KINDS)?;
+    let registrations: &[KindRegistration] = DEMO_KINDS;
+    semantics.register_consts(registrations)?;
 
     semantics.add_edge(PREYS_ON, IS_A, RELATION)?;
     semantics.add_edge(PREDATED_BY, IS_A, RELATION)?;
