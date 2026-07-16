@@ -193,15 +193,18 @@ collection in each lane and materializes their Cartesian product:
 
 ```rust
 let edges = cartesian_edges(
-    [WOLF, FOX],
-    [LIKES, AVOIDS],
+    [PLAYER, GUIDE],
+    [CAN_ENTER, CAN_LEAVE],
     [FOREST, MEADOW],
 );
 assert_eq!(edges.len(), 8);
 
 semantics.add_edges(edges)?;
-semantics.remove_edges(cartesian_edges(WOLF, AVOIDS, [FOREST, MEADOW]))?;
+semantics.remove_edges(cartesian_edges([PLAYER, GUIDE], CAN_ENTER, MEADOW))?;
 ```
+
+This states that both actors can enter and leave both places. Cartesian
+authoring should only be used when every generated combination is intended.
 
 Arrays, vectors, and borrowed slices are supported. Scalars do not need to be
 wrapped. `EdgeQueryBuilder::cartesian` applies the same lane model without
@@ -210,7 +213,7 @@ materializing combinations:
 ```rust
 let matching = snapshot
     .edge_query()
-    .cartesian(WOLF, [LIKES, AVOIDS], [FOREST, MEADOW])
+    .cartesian(PLAYER, [CAN_ENTER, CAN_LEAVE], [FOREST, MEADOW])
     .run_edges(&snapshot)?;
 ```
 

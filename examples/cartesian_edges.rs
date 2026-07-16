@@ -3,10 +3,10 @@ use bevy_semantics::{cartesian_edges, semantic_kinds, SemanticError, SemanticReg
 
 semantic_kinds! {
     const EXAMPLE_KINDS = {
-        WOLF = "Wolf",
-        FOX = "Fox",
-        LIKES = "likes",
-        AVOIDS = "avoids",
+        PLAYER = "Player",
+        GUIDE = "Guide",
+        CAN_ENTER = "can_enter",
+        CAN_LEAVE = "can_leave",
         FOREST = "Forest",
         MEADOW = "Meadow",
     };
@@ -15,22 +15,24 @@ semantic_kinds! {
 fn main() -> Result<(), SemanticError> {
     let mut registry = SemanticRegistry::default();
     registry.register_consts(EXAMPLE_KINDS)?;
-    registry.add_edges([(LIKES, IS_A, RELATION), (AVOIDS, IS_A, RELATION)])?;
+    registry.add_edges([(CAN_ENTER, IS_A, RELATION), (CAN_LEAVE, IS_A, RELATION)])?;
 
-    let combinations = cartesian_edges([WOLF, FOX], [LIKES, AVOIDS], [FOREST, MEADOW]);
+    // Both actors can enter and leave both places: 2 actors × 2 permissions × 2 places.
+    let combinations = cartesian_edges([PLAYER, GUIDE], [CAN_ENTER, CAN_LEAVE], [FOREST, MEADOW]);
     assert_eq!(combinations.len(), 8);
     registry.add_edges(combinations)?;
 
     let snapshot = registry.snapshot();
-    let wolf_edges = snapshot
+    let player_permissions = snapshot
         .edge_query()
-        .cartesian(WOLF, [LIKES, AVOIDS], [FOREST, MEADOW])
+        .cartesian(PLAYER, [CAN_ENTER, CAN_LEAVE], [FOREST, MEADOW])
         .run_edges(&snapshot)?;
-    assert_eq!(wolf_edges.len(), 4);
+    assert_eq!(player_permissions.len(), 4);
 
-    registry.remove_edges(cartesian_edges([WOLF, FOX], AVOIDS, FOREST))?;
-    assert!(!registry.has_edge(WOLF, AVOIDS, FOREST));
-    assert!(!registry.has_edge(FOX, AVOIDS, FOREST));
+    // Close the meadow to both actors by removing two edges at once.
+    registry.remove_edges(cartesian_edges([PLAYER, GUIDE], CAN_ENTER, MEADOW))?;
+    assert!(!registry.has_edge(PLAYER, CAN_ENTER, MEADOW));
+    assert!(!registry.has_edge(GUIDE, CAN_ENTER, MEADOW));
 
     println!("added 8 Cartesian edges, queried 4, and removed 2");
     Ok(())
