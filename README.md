@@ -476,6 +476,10 @@ Measured with `cargo bench -p bevy_semantics --bench semantics_bench` on the mac
 | `semantics_snapshot_build_4k_tombstoned` | `1.0975 ms - 1.1063 ms` |
 | `semantics_snapshot_cached_4k` | `16.122 ns - 16.195 ns` |
 | `semantics_bulk_authoring_4k` | `1.9796 ms - 1.9882 ms` |
+| `semantics_cartesian_edges_8x4x8/materialize` | `270.77 ns - 271.68 ns` |
+| `semantics_cartesian_edges_8x4x8/add` | `5.6334 us - 5.6625 us` |
+| `semantics_cartesian_edges_8x4x8/query` | `350.41 ns - 351.93 ns` |
+| `semantics_cartesian_edges_8x4x8/remove` | `3.2380 us - 3.3362 us` |
 | `semantics_lookup_kind_by_name` | `6.6080 ns - 6.6351 ns` |
 | `semantics_const_registration_8` | `2.1106 us - 2.1353 us` |
 | `semantics_component_registration/cold_world` | `7.7192 us - 7.8640 us` |
@@ -492,6 +496,10 @@ Measured with `cargo bench -p bevy_semantics --bench semantics_bench` on the mac
 The task benchmarks now derive and apply 4,095 edges from the 4,096-node
 fixture. Earlier results accidentally measured an empty derived command list and
 are therefore not comparable.
+
+The Cartesian benchmark uses 8 subjects, 4 relations, and 8 targets, producing
+256 edges. Addition and removal include validation of every referenced kind;
+the query measures a repeated cached query and its 256-edge result clone.
 
 ## Notes
 

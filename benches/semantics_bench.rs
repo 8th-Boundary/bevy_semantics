@@ -4,7 +4,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::World;
 use bevy_semantics::core::{CAN_BE, IS_A};
 use bevy_semantics::{
-    semantic_kinds, Kind, SemanticCommand, SemanticComponent, SemanticComponents,
+    cartesian_edges, semantic_kinds, Kind, SemanticCommand, SemanticComponent, SemanticComponents,
     SemanticPlaybackQueue, SemanticRegistry, SemanticWorldExt,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -12,6 +12,9 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 const NODE_COUNT: usize = 4_096;
 const LINK_STRIDE: usize = 16;
 const TRAVERSAL_DEPTH: usize = 128;
+const CARTESIAN_SUBJECT_COUNT: usize = 8;
+const CARTESIAN_RELATION_COUNT: usize = 4;
+const CARTESIAN_TARGET_COUNT: usize = 8;
 
 semantic_kinds! {
     const BENCH_CONST_KINDS = {
@@ -92,6 +95,16 @@ fn derive_task_commands(
     vec![SemanticCommand::AddEdges { edges }]
 }
 
+struct CartesianFixture {
+    empty_registry: SemanticRegistry,
+    populated_registry: SemanticRegistry,
+    snapshot: Arc<bevy_semantics::SemanticSnapshot>,
+    subjects: Vec<Kind>,
+    relations: Vec<Kind>,
+    targets: Vec<Kind>,
+    edges: Vec<bevy_semantics::EdgeRegistration>,
+}
+
 fn build_fixture() -> Fixture {
     let mut registry = SemanticRegistry::default();
     let (is_a, root, linked_to, playable, nodes) = populate_registry(&mut registry);
@@ -154,6 +167,56 @@ fn bench_snapshot_build(c: &mut Criterion) {
     });
 }
 
+fn build_cartesian_fixture() -> CartesianFixture {
+    let mut empty_registry = SemanticRegistry::default();
+    let (subjects, relations, targets) = {
+        let mut batch = empty_registry.batch();
+        let subjects = (0..CARTESIAN_SUBJECT_COUNT)
+            .map(|index| {
+                batch
+                    .register_kind(format!("cartesian_subject_{index}"))
+                    .expect("Cartesian subject")
+            })
+            .collect::<Vec<_>>();
+        let relations = (0..CARTESIAN_RELATION_COUNT)
+            .map(|index| {
+                batch
+                    .register_kind(format!("cartesian_relation_{index}"))
+                    .expect("Cartesian relation")
+            })
+            .collect::<Vec<_>>();
+        let targets = (0..CARTESIAN_TARGET_COUNT)
+            .map(|index| {
+                batch
+                    .register_kind(format!("cartesian_target_{index}"))
+                    .expect("Cartesian target")
+            })
+            .collect::<Vec<_>>();
+        (subjects, relations, targets)
+    };
+
+    let edges = cartesian_edges(&subjects, &relations, &targets);
+    debug_assert_eq!(
+        edges.len(),
+        CARTESIAN_SUBJECT_COUNT * CARTESIAN_RELATION_COUNT * CARTESIAN_TARGET_COUNT
+    );
+    let mut populated_registry = empty_registry.clone();
+    populated_registry
+        .add_edges(&edges)
+        .expect("Cartesian fixture edges");
+    let snapshot = populated_registry.snapshot_cached();
+
+    CartesianFixture {
+        empty_registry,
+        populated_registry,
+        snapshot,
+        subjects,
+        relations,
+        targets,
+        edges,
+    }
+}
+
 fn bench_snapshot_build_tombstoned(c: &mut Criterion) {
     let mut fixture = build_fixture();
     for index in (LINK_STRIDE..NODE_COUNT).step_by(128) {
@@ -188,6 +251,68 @@ fn bench_lookup_kind_by_name(c: &mut Criterion) {
     c.bench_function("semantics_lookup_kind_by_name", |b| {
         b.iter(|| black_box(fixture.snapshot.kind(black_box(&fixture.lookup_name))))
     });
+}
+
+fn bench_cartesian_edges(c: &mut Criterion) {
+    let fixture = build_cartesian_fixture();
+    let mut group = c.benchmark_group("semantics_cartesian_edges_8x4x8");
+
+    group.bench_function("materialize", |b| {
+        b.iter(|| {
+            black_box(cartesian_edges(
+                black_box(&fixture.subjects),
+                black_box(&fixture.relations),
+                black_box(&fixture.targets),
+            ))
+        })
+    });
+
+    group.bench_function("add", |b| {
+        b.iter_batched(
+            || fixture.empty_registry.clone(),
+            |mut registry| {
+                black_box(
+                    registry
+                        .add_edges(black_box(&fixture.edges))
+                        .expect("Cartesian edge addition"),
+                )
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("query", |b| {
+        b.iter(|| {
+            black_box(
+                fixture
+                    .snapshot
+                    .edge_query()
+                    .cartesian(
+                        black_box(&fixture.subjects),
+                        black_box(&fixture.relations),
+                        black_box(&fixture.targets),
+                    )
+                    .run_edges(black_box(&fixture.snapshot))
+                    .expect("Cartesian edge query"),
+            )
+        })
+    });
+
+    group.bench_function("remove", |b| {
+        b.iter_batched(
+            || fixture.populated_registry.clone(),
+            |mut registry| {
+                black_box(
+                    registry
+                        .remove_edges(black_box(&fixture.edges))
+                        .expect("Cartesian edge removal"),
+                )
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    group.finish();
 }
 
 fn bench_const_registration(c: &mut Criterion) {
@@ -357,6 +482,7 @@ criterion_group!(
     bench_snapshot_build_tombstoned,
     bench_snapshot_cached,
     bench_bulk_authoring,
+    bench_cartesian_edges,
     bench_lookup_kind_by_name,
     bench_const_registration,
     bench_semantic_component_registration,

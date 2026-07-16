@@ -549,6 +549,7 @@ Benchmarks should cover:
 - cached `is_a`
 - builder execution vs compiled execution
 - nested query materialization
+- Cartesian edge materialization, addition, querying, and removal
 - snapshot swap cost
 
 Benchmark graph profiles:
