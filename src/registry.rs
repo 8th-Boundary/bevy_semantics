@@ -652,9 +652,7 @@ impl SemanticRegistry {
         relation: Kind,
         target: Kind,
     ) -> Result<bool, SemanticError> {
-        self.ensure_known_kind(subject)?;
-        self.ensure_known_kind(relation)?;
-        self.ensure_known_kind(target)?;
+        self.validate_known_edge(subject, relation, target)?;
 
         let key = (subject, relation, target);
         if self.graph.edges.remove(&key) {
@@ -663,6 +661,28 @@ impl SemanticRegistry {
         } else {
             Ok(false)
         }
+    }
+
+    /// Remove semantic edges transactionally from tuple records.
+    ///
+    /// All referenced kinds are validated before the graph is mutated.
+    pub fn remove_edges(
+        &mut self,
+        edges: impl AsRef<[EdgeRegistration]>,
+    ) -> Result<bool, SemanticError> {
+        let edges = edges.as_ref();
+        for &(subject, relation, target) in edges {
+            self.validate_known_edge(subject, relation, target)?;
+        }
+
+        let mut changed = false;
+        for edge in edges {
+            changed |= self.graph.edges.remove(edge);
+        }
+        if changed {
+            self.bump_version();
+        }
+        Ok(changed)
     }
 
     /// Check whether an exact semantic edge exists.
@@ -704,6 +724,7 @@ impl SemanticRegistry {
                 relation,
                 target,
             } => self.remove_edge(subject, relation, target),
+            SemanticCommand::RemoveEdges { edges } => self.remove_edges(edges),
         }
     }
 
@@ -922,6 +943,17 @@ impl SemanticRegistry {
         self.ensure_active_kind(target)
     }
 
+    fn validate_known_edge(
+        &self,
+        subject: Kind,
+        relation: Kind,
+        target: Kind,
+    ) -> Result<(), SemanticError> {
+        self.ensure_known_kind(subject)?;
+        self.ensure_known_kind(relation)?;
+        self.ensure_known_kind(target)
+    }
+
     fn insert_validated_edge(&mut self, edge: EdgeRegistration) -> bool {
         if self.graph.edges.insert(edge) {
             self.bump_version();
@@ -1118,6 +1150,16 @@ impl<'a> SemanticRegistryBatch<'a> {
     ) -> Result<bool, SemanticError> {
         let before = self.registry.version();
         let changed = self.registry.remove_edge(subject, relation, target)?;
+        self.changed |= changed || self.registry.version() != before;
+        Ok(changed)
+    }
+
+    pub fn remove_edges(
+        &mut self,
+        edges: impl AsRef<[EdgeRegistration]>,
+    ) -> Result<bool, SemanticError> {
+        let before = self.registry.version();
+        let changed = self.registry.remove_edges(edges)?;
         self.changed |= changed || self.registry.version() != before;
         Ok(changed)
     }

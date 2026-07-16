@@ -218,6 +218,14 @@ impl Semantics {
     ) -> Result<bool, SemanticError> {
         self.0.remove_edge(subject, relation, target)
     }
+
+    /// Remove semantic edges transactionally from tuple records.
+    pub fn remove_edges(
+        &mut self,
+        edges: impl AsRef<[EdgeRegistration]>,
+    ) -> Result<bool, SemanticError> {
+        self.0.remove_edges(edges)
+    }
 }
 
 /// Fluent semantic edit chain that applies mutations immediately and accumulates the first error.
@@ -357,6 +365,14 @@ impl<'a> SemanticEdit<'a> {
         self
     }
 
+    /// Remove tuple-form edges transactionally from the current semantic state.
+    pub fn remove_edges(mut self, edges: impl AsRef<[EdgeRegistration]>) -> Self {
+        if self.error.is_ok() {
+            self.error = self.semantics.0.remove_edges(edges).map(|_| ());
+        }
+        self
+    }
+
     /// Panic on error and return the underlying semantic resource.
     pub fn expect(self, message: &str) -> &'a mut Semantics {
         if let Err(error) = self.error {
@@ -453,6 +469,8 @@ pub trait SemanticCommandsExt<'w, 's> {
     fn add_edges(&mut self, edges: impl AsRef<[EdgeRegistration]>) -> &mut Self;
 
     fn remove_edge(&mut self, subject: Kind, relation: Kind, target: Kind) -> &mut Self;
+
+    fn remove_edges(&mut self, edges: impl AsRef<[EdgeRegistration]>) -> &mut Self;
 }
 
 impl<'w, 's> SemanticCommandsExt<'w, 's> for Commands<'w, 's> {
@@ -577,6 +595,17 @@ impl<'w, 's> SemanticCommandsExt<'w, 's> for Commands<'w, 's> {
                 relation,
                 target,
             });
+        });
+        self
+    }
+
+    fn remove_edges(&mut self, edges: impl AsRef<[EdgeRegistration]>) -> &mut Self {
+        let edges = edges.as_ref().to_vec();
+        self.queue(move |world: &mut World| {
+            let mut queue = world
+                .get_resource_mut::<SemanticCommandQueue>()
+                .expect("semantic command buffer is missing; add SemanticsPlugin first");
+            queue.push(SemanticCommand::RemoveEdges { edges });
         });
         self
     }

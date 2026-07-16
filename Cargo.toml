@@ -42,6 +42,9 @@ name = "manual_registration"
 [[example]]
 name = "compile_time_registration"
 
+[[example]]
+name = "cartesian_edges"
+
 [[bench]]
 name = "semantics_bench"
 harness = false

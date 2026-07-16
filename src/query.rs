@@ -16,6 +16,10 @@ type TraversalQueryCacheEntry = Option<(u64, Arc<CompiledTraversalQuery>)>;
 type EdgeQueryLocalCache = Arc<RwLock<EdgeQueryCacheEntry>>;
 type TraversalQueryLocalCache = Arc<RwLock<TraversalQueryCacheEntry>>;
 
+const EMPTY_SUBJECT_LANE: u8 = 1 << 0;
+const EMPTY_RELATION_LANE: u8 = 1 << 1;
+const EMPTY_TARGET_LANE: u8 = 1 << 2;
+
 /// Canonical semantic edge record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SemanticEdge {
@@ -26,6 +30,132 @@ pub struct SemanticEdge {
 
 /// Tuple form accepted by bulk edge-registration APIs.
 pub type EdgeRegistration = (Kind, Kind, Kind);
+
+/// One subject, relation, or target lane in a Cartesian edge operation.
+///
+/// A lane can be constructed implicitly from a single [`Kind`], an array, a
+/// vector, or a borrowed slice.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct KindLane(KindLaneStorage);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum KindLaneStorage {
+    One(Kind),
+    Many(Vec<Kind>),
+}
+
+impl Default for KindLane {
+    fn default() -> Self {
+        Self(KindLaneStorage::Many(Vec::new()))
+    }
+}
+
+impl KindLane {
+    /// Collect a lane from any iterator of kinds.
+    pub fn new(kinds: impl IntoIterator<Item = Kind>) -> Self {
+        Self::from_vec(kinds.into_iter().collect())
+    }
+
+    /// Borrow the kinds in this lane.
+    pub fn as_slice(&self) -> &[Kind] {
+        match &self.0 {
+            KindLaneStorage::One(kind) => std::slice::from_ref(kind),
+            KindLaneStorage::Many(kinds) => kinds,
+        }
+    }
+
+    /// Consume the lane and return its kinds.
+    pub fn into_vec(self) -> Vec<Kind> {
+        match self.0 {
+            KindLaneStorage::One(kind) => vec![kind],
+            KindLaneStorage::Many(kinds) => kinds,
+        }
+    }
+
+    fn from_vec(mut kinds: Vec<Kind>) -> Self {
+        if kinds.len() == 1 {
+            Self(KindLaneStorage::One(
+                kinds.pop().expect("lane contains one kind"),
+            ))
+        } else {
+            Self(KindLaneStorage::Many(kinds))
+        }
+    }
+}
+
+impl From<Kind> for KindLane {
+    fn from(kind: Kind) -> Self {
+        Self(KindLaneStorage::One(kind))
+    }
+}
+
+impl<const N: usize> From<[Kind; N]> for KindLane {
+    fn from(kinds: [Kind; N]) -> Self {
+        Self::from_vec(Vec::from(kinds))
+    }
+}
+
+impl From<Vec<Kind>> for KindLane {
+    fn from(kinds: Vec<Kind>) -> Self {
+        Self::from_vec(kinds)
+    }
+}
+
+impl From<&[Kind]> for KindLane {
+    fn from(kinds: &[Kind]) -> Self {
+        Self::from_vec(kinds.to_vec())
+    }
+}
+
+impl<const N: usize> From<&[Kind; N]> for KindLane {
+    fn from(kinds: &[Kind; N]) -> Self {
+        Self::from_vec(kinds.to_vec())
+    }
+}
+
+impl From<&Vec<Kind>> for KindLane {
+    fn from(kinds: &Vec<Kind>) -> Self {
+        Self::from_vec(kinds.clone())
+    }
+}
+
+impl FromIterator<Kind> for KindLane {
+    fn from_iter<T: IntoIterator<Item = Kind>>(iter: T) -> Self {
+        Self::new(iter)
+    }
+}
+
+/// Materialize the Cartesian product of subject, relation, and target lanes.
+///
+/// Output ordering is deterministic: subjects are outermost, followed by
+/// relations, with targets innermost.
+#[must_use]
+pub fn cartesian_edges(
+    subjects: impl Into<KindLane>,
+    relations: impl Into<KindLane>,
+    targets: impl Into<KindLane>,
+) -> Vec<EdgeRegistration> {
+    let subjects = subjects.into();
+    let relations = relations.into();
+    let targets = targets.into();
+    let capacity = subjects
+        .as_slice()
+        .len()
+        .checked_mul(relations.as_slice().len())
+        .and_then(|size| size.checked_mul(targets.as_slice().len()))
+        .expect("Cartesian edge count exceeds usize");
+    let mut edges = Vec::with_capacity(capacity);
+
+    for &subject in subjects.as_slice() {
+        for &relation in relations.as_slice() {
+            for &target in targets.as_slice() {
+                edges.push((subject, relation, target));
+            }
+        }
+    }
+
+    edges
+}
 
 impl SemanticEdge {
     #[inline]
@@ -80,6 +210,9 @@ pub enum SemanticCommand {
         relation: Kind,
         target: Kind,
     },
+    RemoveEdges {
+        edges: Vec<EdgeRegistration>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -105,6 +238,7 @@ pub struct EdgeQuery {
     subjects: Vec<Kind>,
     relations: Vec<Kind>,
     targets: Vec<Kind>,
+    empty_lane_mask: u8,
     direction: EdgeDirection,
     selection: EdgeSelection,
 }
@@ -115,6 +249,7 @@ impl Default for EdgeQuery {
             subjects: Vec::new(),
             relations: Vec::new(),
             targets: Vec::new(),
+            empty_lane_mask: 0,
             direction: EdgeDirection::Outgoing,
             selection: EdgeSelection::Edges,
         }
@@ -289,36 +424,79 @@ impl EdgeQueryBuilder {
 
     pub fn subject(mut self, subject: Kind) -> Self {
         self.query.subjects.push(subject);
+        self.query.empty_lane_mask &= !EMPTY_SUBJECT_LANE;
         self.refresh_fingerprint();
         self
     }
 
     pub fn subjects(mut self, subjects: impl IntoIterator<Item = Kind>) -> Self {
         self.query.subjects.extend(subjects);
+        if !self.query.subjects.is_empty() {
+            self.query.empty_lane_mask &= !EMPTY_SUBJECT_LANE;
+        }
         self.refresh_fingerprint();
         self
     }
 
     pub fn relation(mut self, relation: Kind) -> Self {
         self.query.relations.push(relation);
+        self.query.empty_lane_mask &= !EMPTY_RELATION_LANE;
         self.refresh_fingerprint();
         self
     }
 
     pub fn relations(mut self, relations: impl IntoIterator<Item = Kind>) -> Self {
         self.query.relations.extend(relations);
+        if !self.query.relations.is_empty() {
+            self.query.empty_lane_mask &= !EMPTY_RELATION_LANE;
+        }
         self.refresh_fingerprint();
         self
     }
 
     pub fn target(mut self, target: Kind) -> Self {
         self.query.targets.push(target);
+        self.query.empty_lane_mask &= !EMPTY_TARGET_LANE;
         self.refresh_fingerprint();
         self
     }
 
     pub fn targets(mut self, targets: impl IntoIterator<Item = Kind>) -> Self {
         self.query.targets.extend(targets);
+        if !self.query.targets.is_empty() {
+            self.query.empty_lane_mask &= !EMPTY_TARGET_LANE;
+        }
+        self.refresh_fingerprint();
+        self
+    }
+
+    /// Replace the subject, relation, and target filters with Cartesian lanes.
+    ///
+    /// A scalar [`Kind`] or a collection can be used independently for each
+    /// lane. An empty lane matches no edges.
+    pub fn cartesian(
+        mut self,
+        subjects: impl Into<KindLane>,
+        relations: impl Into<KindLane>,
+        targets: impl Into<KindLane>,
+    ) -> Self {
+        let subjects = subjects.into().into_vec();
+        let relations = relations.into().into_vec();
+        let targets = targets.into().into_vec();
+
+        self.query.empty_lane_mask = 0;
+        if subjects.is_empty() {
+            self.query.empty_lane_mask |= EMPTY_SUBJECT_LANE;
+        }
+        if relations.is_empty() {
+            self.query.empty_lane_mask |= EMPTY_RELATION_LANE;
+        }
+        if targets.is_empty() {
+            self.query.empty_lane_mask |= EMPTY_TARGET_LANE;
+        }
+        self.query.subjects = subjects;
+        self.query.relations = relations;
+        self.query.targets = targets;
         self.refresh_fingerprint();
         self
     }
@@ -1058,6 +1236,10 @@ fn edge_matches(
     subject_filter: Option<&[Kind]>,
     target_filter: Option<&[Kind]>,
 ) -> bool {
+    if query.empty_lane_mask != 0 {
+        return false;
+    }
+
     let relation_match =
         query.relations.is_empty() || query.relations.binary_search(&edge.relation).is_ok();
     if !relation_match {

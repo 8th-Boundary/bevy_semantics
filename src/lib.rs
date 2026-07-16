@@ -26,8 +26,9 @@ pub mod prelude {
         CommandsExt, SemanticEdit, SemanticPlaybackQueue, Semantics, SemanticsPlugin,
     };
     pub use crate::query::{
-        CompiledEdgeQuery, CompiledTraversalQuery, EdgeQuery, EdgeQueryBuilder, EdgeRegistration,
-        SemanticCommand, SemanticEdge, TraversalQuery, TraversalQueryBuilder,
+        cartesian_edges, CompiledEdgeQuery, CompiledTraversalQuery, EdgeQuery, EdgeQueryBuilder,
+        EdgeRegistration, KindLane, SemanticCommand, SemanticEdge, TraversalQuery,
+        TraversalQueryBuilder,
     };
     pub use crate::registry::{Core, SemanticRegistry, SemanticRegistryBatch};
     pub use crate::semantic_component::{SemanticAppExt, SemanticComponents, SemanticWorldExt};
@@ -39,8 +40,9 @@ pub use direction::EdgeDirection;
 pub use error::SemanticError;
 pub use kind::{Kind, KindRegistration};
 pub use query::{
-    CompiledEdgeQuery, CompiledTraversalQuery, EdgeQuery, EdgeQueryBuilder, EdgeRegistration,
-    SemanticCommand, SemanticEdge, TraversalQuery, TraversalQueryBuilder,
+    cartesian_edges, CompiledEdgeQuery, CompiledTraversalQuery, EdgeQuery, EdgeQueryBuilder,
+    EdgeRegistration, KindLane, SemanticCommand, SemanticEdge, TraversalQuery,
+    TraversalQueryBuilder,
 };
 pub use registry::{Core, SemanticRegistry, SemanticRegistryBatch};
 pub use semantic_component::{

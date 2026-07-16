@@ -186,6 +186,34 @@ registration APIs. Relation-specific payloads belong in application resources,
 for example a `HashMap<EdgeRegistration, Cost>` or a relation-specific map.
 This keeps the shared ontology compact when most relations need no payload.
 
+### Cartesian Edges
+
+`cartesian_edges(subjects, relations, targets)` accepts either one `Kind` or a
+collection in each lane and materializes their Cartesian product:
+
+```rust
+let edges = cartesian_edges(
+    [WOLF, FOX],
+    [LIKES, AVOIDS],
+    [FOREST, MEADOW],
+);
+assert_eq!(edges.len(), 8);
+
+semantics.add_edges(edges)?;
+semantics.remove_edges(cartesian_edges(WOLF, AVOIDS, [FOREST, MEADOW]))?;
+```
+
+Arrays, vectors, and borrowed slices are supported. Scalars do not need to be
+wrapped. `EdgeQueryBuilder::cartesian` applies the same lane model without
+materializing combinations:
+
+```rust
+let matching = snapshot
+    .edge_query()
+    .cartesian(WOLF, [LIKES, AVOIDS], [FOREST, MEADOW])
+    .run_edges(&snapshot)?;
+```
+
 ### Storage Model
 
 The crate splits mutation and read access:
@@ -216,6 +244,7 @@ Main methods:
 - `add_edge(subject, relation, target)`
 - `add_edges([(subject, relation, target), ...])`
 - `remove_edge(subject, relation, target)`
+- `remove_edges([(subject, relation, target), ...])`
 - `batch()`
 - `apply_commands(commands)`
 - `core()`
@@ -242,7 +271,7 @@ Use this as `Res<Semantics>` or `ResMut<Semantics>` in Bevy.
 - `ResMut<Semantics>` is the write side
 - direct reads live here: `kind`, `kind_of`, `name`, `core`
 - graph reads live here too: `is_a`, `targets`, `subjects`, `neighbors`, `reachable`, `can_reach`, `has_edge`
-- direct writes live here: `register_kind`, `register_const`, `register_consts`, `typed_kind`, `typed_kind_named`, `unregister_kind`, `tombstone_kind`, `revive_kind`, `unregister_namespace`, `add_edge`, `add_edges`, `remove_edge`
+- direct writes live here: `register_kind`, `register_const`, `register_consts`, `typed_kind`, `typed_kind_named`, `unregister_kind`, `tombstone_kind`, `revive_kind`, `unregister_namespace`, `add_edge`, `add_edges`, `remove_edge`, `remove_edges`
 - `snapshot()` returns the cached immutable read model for background work
 
 Example shape:
@@ -277,6 +306,7 @@ It supports:
 - `add_edge`
 - `add_edges`
 - `remove_edge`
+- `remove_edges`
 - `expect(...)`
 - `finish()`
 
@@ -287,6 +317,7 @@ Use this for stable read-only work.
 - it is immutable
 - it can be cloned into background tasks
 - it is the right surface for compiled queries
+- edge queries support scalar-or-collection Cartesian S/R/T lanes
 - direct reads do not need a snapshot
 - background tasks do
 
@@ -388,6 +419,7 @@ cargo run -p bevy_semantics --example compile_time_registration
 cargo run -p bevy_semantics --example semantic_components
 cargo run -p bevy_semantics --example task_playback
 cargo run -p bevy_semantics --example manual_registration
+cargo run -p bevy_semantics --example cartesian_edges
 ```
 
 - `semantics_basic` authors an ontology with grouped compile-time `semantic_kinds!` constants.
@@ -395,6 +427,7 @@ cargo run -p bevy_semantics --example manual_registration
 - `semantic_components` derives identities and registers concrete generic components.
 - `task_playback` shares compile-time kinds with a background task.
 - `manual_registration` demonstrates the older dynamic `register_kind` path without Bevy.
+- `cartesian_edges` demonstrates mixed scalar/collection lanes for adding, querying, and removing edges.
 
 ## Background Tasks
 

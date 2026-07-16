@@ -182,6 +182,7 @@ Direct registry API:
 - `add_edge(subject, relation, target) -> Result<bool, SemanticError>`
 - `add_edges(edges) -> Result<bool, SemanticError>`
 - `remove_edge(subject, relation, target) -> Result<bool, SemanticError>`
+- `remove_edges(edges) -> Result<bool, SemanticError>`
 - `has_edge(subject, relation, target) -> bool`
 - `apply_commands(commands) -> Result<bool, SemanticError>`
 - `batch() -> SemanticRegistryBatch`
@@ -251,6 +252,8 @@ struct SemanticEdge {
 Edge identity:
 - `(subject, relation, target)`
 - `EdgeRegistration` aliases this tuple for bulk registration
+- `KindLane` owns one scalar-or-collection S/R/T lane
+- `cartesian_edges(subjects, relations, targets)` materializes lanes in subject/relation/target order
 - an edge has no built-in payload
 - relation-specific values live in application resources keyed by the edge tuple or another domain key
 
@@ -342,6 +345,7 @@ Core commands:
 - `AddEdge { subject: Kind, relation: Kind, target: Kind }`
 - `AddEdges { edges: Vec<EdgeRegistration> }`
 - `RemoveEdge { subject: Kind, relation: Kind, target: Kind }`
+- `RemoveEdges { edges: Vec<EdgeRegistration> }`
 
 Rules:
 - command order is deterministic
@@ -353,6 +357,7 @@ Rules:
 - `AddEdge` inserts the triple idempotently
 - `AddEdges` validates the entire tuple collection before inserting any edge
 - `RemoveEdge` removes by triple only
+- `RemoveEdges` validates the entire tuple collection before removing any edge
 - compiled queries and caches must become stale when versions change
 
 ## 8. Query Model
@@ -377,6 +382,7 @@ Registry lookups are direct methods, not query objects.
 - `subject`, `subjects`
 - `relation`, `relations`
 - `target`, `targets`
+- `cartesian(subjects, relations, targets)` for scalar-or-collection lane filters
 - `outgoing`, `incoming`, `both`
 - `subjects_from`, `targets_from`
 - `intersect_subjects_from`, `intersect_targets_from`
@@ -495,6 +501,8 @@ Convenience command examples:
 - `typed_kind_named::<Health>("Health")`
 - `semantics.add_edges([(a, is_a, b), (c, is_a, d)]).expect("seed taxonomy")`
 - `remove_edge(a, is_a, b)`
+- `add_edges(cartesian_edges([a, b], is_a, [c, d]))`
+- `remove_edges(cartesian_edges(a, is_a, [c, d]))`
 
 ## 11. Serialization
 
