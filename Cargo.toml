@@ -1,6 +1,6 @@
 [package]
 name = "bevy_semantics"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.95.0"
 description = "Semantic identity, ontology, and query infrastructure for Bevy"
@@ -20,7 +20,7 @@ bevy_ecs = "0.19"
 bevy_reflect = "0.19"
 bevy_platform = "0.19"
 bevy_tasks = "0.19"
-bevy_semantics_derive = { version = "0.2.0", path = "bevy_semantics_derive" }
+bevy_semantics_derive = { version = "0.3.0", path = "bevy_semantics_derive" }
 
 [dev-dependencies]
 criterion = { version = "0.5", default-features = true }

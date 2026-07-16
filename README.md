@@ -18,8 +18,12 @@ Use this crate when you want to answer questions like:
 
 ## Bevy Compatibility
 
+`bevy_semantics` follows its own semantic versioning. Bevy compatibility is
+tracked explicitly rather than encoded in the crate's version number.
+
 | bevy_semantics | Bevy |
 | --- | --- |
+| `0.3.x` | `0.19.x` |
 | `0.2.x` | `0.19.x` |
 | `0.1.x` | `0.18.x` |
 

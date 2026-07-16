@@ -2,9 +2,9 @@
 
 All notable changes to `bevy_semantics` will be documented in this file.
 
-## 0.2.0 - Unreleased
+## 0.3.0 - Unreleased
 
-- Updated Bevy compatibility to `0.19.x`.
+- Targets Bevy `0.19.x` under the crate's independent semantic-versioning policy.
 - Removed the unintended `Resource` derive from `SemanticEdge` to keep semantic edge records out of Bevy 0.19's resources-as-components model.
 - Added release metadata for crates.io/docs.rs publication.
 - Added compile-time `kind!`, `SemanticComponent`, its derive, and explicit concrete generic-instantiation support.
