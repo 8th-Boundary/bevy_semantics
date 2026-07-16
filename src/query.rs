@@ -9,10 +9,10 @@ use std::sync::{Arc, RwLock};
 use crate::direction::EdgeDirection;
 use crate::error::SemanticError;
 use crate::kind::Kind;
-use crate::snapshot::{SemanticSnapshot, TraversalParams};
+use crate::snapshot::{SemanticSnapshot, SnapshotKey, TraversalParams};
 
-type EdgeQueryCacheEntry = Option<(u64, Arc<CompiledEdgeQuery>)>;
-type TraversalQueryCacheEntry = Option<(u64, Arc<CompiledTraversalQuery>)>;
+type EdgeQueryCacheEntry = Option<(SnapshotKey, Arc<CompiledEdgeQuery>)>;
+type TraversalQueryCacheEntry = Option<(SnapshotKey, Arc<CompiledTraversalQuery>)>;
 type EdgeQueryLocalCache = Arc<RwLock<EdgeQueryCacheEntry>>;
 type TraversalQueryLocalCache = Arc<RwLock<TraversalQueryCacheEntry>>;
 
@@ -394,7 +394,7 @@ impl SetSource {
 /// Fluent builder for edge queries.
 #[derive(Clone, Debug)]
 pub struct EdgeQueryBuilder {
-    bound_version: Option<u64>,
+    bound_snapshot: Option<SnapshotKey>,
     query: EdgeQuery,
     subject_sources: Vec<SetSource>,
     target_sources: Vec<SetSource>,
@@ -409,9 +409,9 @@ impl Default for EdgeQueryBuilder {
 }
 
 impl EdgeQueryBuilder {
-    pub(crate) fn new(bound_version: Option<u64>) -> Self {
+    pub(crate) fn new(bound_snapshot: Option<SnapshotKey>) -> Self {
         let mut builder = Self {
-            bound_version,
+            bound_snapshot,
             query: EdgeQuery::default(),
             subject_sources: Vec::new(),
             target_sources: Vec::new(),
@@ -584,15 +584,9 @@ impl EdgeQueryBuilder {
         Ok(self.compile_cached(snapshot)?.matches.len())
     }
 
-    fn ensure_version(&self, snapshot: &SemanticSnapshot) -> Result<(), SemanticError> {
-        if let Some(bound_version) = self.bound_version {
-            if bound_version != snapshot.version() {
-                return Err(SemanticError::StaleCompiledQuery {
-                    domain: "edge query",
-                    compiled_version: bound_version,
-                    current_version: snapshot.version(),
-                });
-            }
+    fn ensure_snapshot(&self, snapshot: &SemanticSnapshot) -> Result<(), SemanticError> {
+        if let Some(bound_snapshot) = self.bound_snapshot {
+            ensure_snapshot_key(bound_snapshot, snapshot.cache_key(), "edge query")?;
         }
         Ok(())
     }
@@ -601,9 +595,10 @@ impl EdgeQueryBuilder {
         &self,
         snapshot: &SemanticSnapshot,
     ) -> Result<Arc<CompiledEdgeQuery>, SemanticError> {
-        self.ensure_version(snapshot)?;
+        self.ensure_snapshot(snapshot)?;
 
-        if let Some(cached) = self.local_cache(snapshot.version()) {
+        let snapshot_key = snapshot.cache_key();
+        if let Some(cached) = self.local_cache(snapshot_key) {
             return Ok(cached);
         }
 
@@ -614,7 +609,7 @@ impl EdgeQueryBuilder {
             .get(self)
             .cloned()
         {
-            self.store_local_cache(snapshot.version(), Arc::clone(&cached));
+            self.store_local_cache(snapshot_key, Arc::clone(&cached));
             return Ok(cached);
         }
 
@@ -625,12 +620,12 @@ impl EdgeQueryBuilder {
             .write()
             .expect("edge query cache poisoned");
         if let Some(cached) = cache.get(self).cloned() {
-            self.store_local_cache(snapshot.version(), Arc::clone(&cached));
+            self.store_local_cache(snapshot_key, Arc::clone(&cached));
             return Ok(cached);
         }
 
         cache.insert(self.clone(), Arc::clone(&compiled));
-        self.store_local_cache(snapshot.version(), Arc::clone(&compiled));
+        self.store_local_cache(snapshot_key, Arc::clone(&compiled));
         Ok(compiled)
     }
 
@@ -654,7 +649,7 @@ impl EdgeQueryBuilder {
             targets.push(edge.target);
         }
         Ok(CompiledEdgeQuery {
-            version: snapshot.version(),
+            snapshot_key: snapshot.cache_key(),
             query,
             matches,
             subjects: dedup_sorted_kinds(subjects, snapshot),
@@ -666,7 +661,7 @@ impl EdgeQueryBuilder {
 impl EdgeQueryBuilder {
     fn refresh_fingerprint(&mut self) {
         self.fingerprint = hash_state(&(
-            self.bound_version,
+            self.bound_snapshot,
             &self.query,
             &self.subject_sources,
             &self.target_sources,
@@ -681,13 +676,13 @@ impl EdgeQueryBuilder {
             .expect("edge query cache poisoned") = None;
     }
 
-    fn local_cache(&self, snapshot_version: u64) -> Option<Arc<CompiledEdgeQuery>> {
+    fn local_cache(&self, snapshot_key: SnapshotKey) -> Option<Arc<CompiledEdgeQuery>> {
         self.compiled_cache
             .read()
             .expect("edge query cache poisoned")
             .as_ref()
-            .and_then(|(version, compiled)| {
-                if *version == snapshot_version {
+            .and_then(|(cached_key, compiled)| {
+                if *cached_key == snapshot_key {
                     Some(Arc::clone(compiled))
                 } else {
                     None
@@ -695,25 +690,25 @@ impl EdgeQueryBuilder {
             })
     }
 
-    fn store_local_cache(&self, snapshot_version: u64, compiled: Arc<CompiledEdgeQuery>) {
+    fn store_local_cache(&self, snapshot_key: SnapshotKey, compiled: Arc<CompiledEdgeQuery>) {
         let mut cache = self
             .compiled_cache
             .write()
             .expect("edge query cache poisoned");
         if cache
             .as_ref()
-            .is_some_and(|(version, _)| *version == snapshot_version)
+            .is_some_and(|(cached_key, _)| *cached_key == snapshot_key)
         {
             return;
         }
-        *cache = Some((snapshot_version, compiled));
+        *cache = Some((snapshot_key, compiled));
     }
 }
 
 impl PartialEq for EdgeQueryBuilder {
     fn eq(&self, other: &Self) -> bool {
         self.fingerprint == other.fingerprint
-            && self.bound_version == other.bound_version
+            && self.bound_snapshot == other.bound_snapshot
             && self.query == other.query
             && self.subject_sources == other.subject_sources
             && self.target_sources == other.target_sources
@@ -731,7 +726,7 @@ impl Hash for EdgeQueryBuilder {
 /// Compiled edge query plan.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CompiledEdgeQuery {
-    version: u64,
+    snapshot_key: SnapshotKey,
     query: EdgeQuery,
     matches: Vec<SemanticEdge>,
     subjects: Vec<Kind>,
@@ -740,46 +735,39 @@ pub struct CompiledEdgeQuery {
 
 impl CompiledEdgeQuery {
     pub fn version(&self) -> u64 {
-        self.version
+        self.snapshot_key.version
     }
 
     pub fn run_edges(
         &self,
         snapshot: &SemanticSnapshot,
     ) -> Result<Vec<SemanticEdge>, SemanticError> {
-        self.ensure_version(snapshot)?;
+        self.ensure_snapshot(snapshot)?;
         Ok(self.matches.clone())
     }
 
     pub fn run_subjects(&self, snapshot: &SemanticSnapshot) -> Result<Vec<Kind>, SemanticError> {
-        self.ensure_version(snapshot)?;
+        self.ensure_snapshot(snapshot)?;
         Ok(self.subjects.clone())
     }
 
     pub fn run_targets(&self, snapshot: &SemanticSnapshot) -> Result<Vec<Kind>, SemanticError> {
-        self.ensure_version(snapshot)?;
+        self.ensure_snapshot(snapshot)?;
         Ok(self.targets.clone())
     }
 
     pub fn run_exists(&self, snapshot: &SemanticSnapshot) -> Result<bool, SemanticError> {
-        self.ensure_version(snapshot)?;
+        self.ensure_snapshot(snapshot)?;
         Ok(!self.matches.is_empty())
     }
 
     pub fn run_count(&self, snapshot: &SemanticSnapshot) -> Result<usize, SemanticError> {
-        self.ensure_version(snapshot)?;
+        self.ensure_snapshot(snapshot)?;
         Ok(self.matches.len())
     }
 
-    fn ensure_version(&self, snapshot: &SemanticSnapshot) -> Result<(), SemanticError> {
-        if self.version != snapshot.version() {
-            return Err(SemanticError::StaleCompiledQuery {
-                domain: "edge query",
-                compiled_version: self.version,
-                current_version: snapshot.version(),
-            });
-        }
-        Ok(())
+    fn ensure_snapshot(&self, snapshot: &SemanticSnapshot) -> Result<(), SemanticError> {
+        ensure_snapshot_key(self.snapshot_key, snapshot.cache_key(), "edge query")
     }
 }
 
@@ -787,7 +775,7 @@ impl CompiledEdgeQuery {
 /// Fluent builder for traversal queries.
 #[derive(Clone, Debug)]
 pub struct TraversalQueryBuilder {
-    bound_version: Option<u64>,
+    bound_snapshot: Option<SnapshotKey>,
     query: TraversalQuery,
     fingerprint: u64,
     compiled_cache: TraversalQueryLocalCache,
@@ -800,9 +788,9 @@ impl Default for TraversalQueryBuilder {
 }
 
 impl TraversalQueryBuilder {
-    pub(crate) fn new(bound_version: Option<u64>) -> Self {
+    pub(crate) fn new(bound_snapshot: Option<SnapshotKey>) -> Self {
         let mut builder = Self {
-            bound_version,
+            bound_snapshot,
             query: TraversalQuery::default(),
             fingerprint: 0,
             compiled_cache: Arc::new(RwLock::new(None)),
@@ -920,15 +908,9 @@ impl TraversalQueryBuilder {
         Ok(self.compile_cached(snapshot)?.results.len())
     }
 
-    fn ensure_version(&self, snapshot: &SemanticSnapshot) -> Result<(), SemanticError> {
-        if let Some(bound_version) = self.bound_version {
-            if bound_version != snapshot.version() {
-                return Err(SemanticError::StaleCompiledQuery {
-                    domain: "traversal query",
-                    compiled_version: bound_version,
-                    current_version: snapshot.version(),
-                });
-            }
+    fn ensure_snapshot(&self, snapshot: &SemanticSnapshot) -> Result<(), SemanticError> {
+        if let Some(bound_snapshot) = self.bound_snapshot {
+            ensure_snapshot_key(bound_snapshot, snapshot.cache_key(), "traversal query")?;
         }
         Ok(())
     }
@@ -937,9 +919,10 @@ impl TraversalQueryBuilder {
         &self,
         snapshot: &SemanticSnapshot,
     ) -> Result<Arc<CompiledTraversalQuery>, SemanticError> {
-        self.ensure_version(snapshot)?;
+        self.ensure_snapshot(snapshot)?;
 
-        if let Some(cached) = self.local_cache(snapshot.version()) {
+        let snapshot_key = snapshot.cache_key();
+        if let Some(cached) = self.local_cache(snapshot_key) {
             return Ok(cached);
         }
 
@@ -950,7 +933,7 @@ impl TraversalQueryBuilder {
             .get(self)
             .cloned()
         {
-            self.store_local_cache(snapshot.version(), Arc::clone(&cached));
+            self.store_local_cache(snapshot_key, Arc::clone(&cached));
             return Ok(cached);
         }
 
@@ -961,12 +944,12 @@ impl TraversalQueryBuilder {
             .write()
             .expect("traversal query cache poisoned");
         if let Some(cached) = cache.get(self).cloned() {
-            self.store_local_cache(snapshot.version(), Arc::clone(&cached));
+            self.store_local_cache(snapshot_key, Arc::clone(&cached));
             return Ok(cached);
         }
 
         cache.insert(self.clone(), Arc::clone(&compiled));
-        self.store_local_cache(snapshot.version(), Arc::clone(&compiled));
+        self.store_local_cache(snapshot_key, Arc::clone(&compiled));
         Ok(compiled)
     }
 
@@ -978,7 +961,7 @@ impl TraversalQueryBuilder {
         validate_traversal_query(&query)?;
         let results = evaluate_traversal_query(snapshot, &query)?;
         Ok(CompiledTraversalQuery {
-            version: snapshot.version(),
+            snapshot_key: snapshot.cache_key(),
             query,
             results,
         })
@@ -987,7 +970,7 @@ impl TraversalQueryBuilder {
 
 impl TraversalQueryBuilder {
     fn refresh_fingerprint(&mut self) {
-        self.fingerprint = hash_state(&(self.bound_version, &self.query));
+        self.fingerprint = hash_state(&(self.bound_snapshot, &self.query));
         self.clear_cache();
     }
 
@@ -998,13 +981,13 @@ impl TraversalQueryBuilder {
             .expect("traversal query cache poisoned") = None;
     }
 
-    fn local_cache(&self, snapshot_version: u64) -> Option<Arc<CompiledTraversalQuery>> {
+    fn local_cache(&self, snapshot_key: SnapshotKey) -> Option<Arc<CompiledTraversalQuery>> {
         self.compiled_cache
             .read()
             .expect("traversal query cache poisoned")
             .as_ref()
-            .and_then(|(version, compiled)| {
-                if *version == snapshot_version {
+            .and_then(|(cached_key, compiled)| {
+                if *cached_key == snapshot_key {
                     Some(Arc::clone(compiled))
                 } else {
                     None
@@ -1012,25 +995,25 @@ impl TraversalQueryBuilder {
             })
     }
 
-    fn store_local_cache(&self, snapshot_version: u64, compiled: Arc<CompiledTraversalQuery>) {
+    fn store_local_cache(&self, snapshot_key: SnapshotKey, compiled: Arc<CompiledTraversalQuery>) {
         let mut cache = self
             .compiled_cache
             .write()
             .expect("traversal query cache poisoned");
         if cache
             .as_ref()
-            .is_some_and(|(version, _)| *version == snapshot_version)
+            .is_some_and(|(cached_key, _)| *cached_key == snapshot_key)
         {
             return;
         }
-        *cache = Some((snapshot_version, compiled));
+        *cache = Some((snapshot_key, compiled));
     }
 }
 
 impl PartialEq for TraversalQueryBuilder {
     fn eq(&self, other: &Self) -> bool {
         self.fingerprint == other.fingerprint
-            && self.bound_version == other.bound_version
+            && self.bound_snapshot == other.bound_snapshot
             && self.query == other.query
     }
 }
@@ -1046,41 +1029,52 @@ impl Hash for TraversalQueryBuilder {
 /// Compiled traversal query plan.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CompiledTraversalQuery {
-    version: u64,
+    snapshot_key: SnapshotKey,
     query: TraversalQuery,
     results: Vec<Kind>,
 }
 
 impl CompiledTraversalQuery {
     pub fn version(&self) -> u64 {
-        self.version
+        self.snapshot_key.version
     }
 
     pub fn run_kinds(&self, snapshot: &SemanticSnapshot) -> Result<Vec<Kind>, SemanticError> {
-        self.ensure_version(snapshot)?;
+        self.ensure_snapshot(snapshot)?;
         Ok(self.results.clone())
     }
 
     pub fn run_exists(&self, snapshot: &SemanticSnapshot) -> Result<bool, SemanticError> {
-        self.ensure_version(snapshot)?;
+        self.ensure_snapshot(snapshot)?;
         Ok(!self.results.is_empty())
     }
 
     pub fn run_count(&self, snapshot: &SemanticSnapshot) -> Result<usize, SemanticError> {
-        self.ensure_version(snapshot)?;
+        self.ensure_snapshot(snapshot)?;
         Ok(self.results.len())
     }
 
-    fn ensure_version(&self, snapshot: &SemanticSnapshot) -> Result<(), SemanticError> {
-        if self.version != snapshot.version() {
-            return Err(SemanticError::StaleCompiledQuery {
-                domain: "traversal query",
-                compiled_version: self.version,
-                current_version: snapshot.version(),
-            });
-        }
-        Ok(())
+    fn ensure_snapshot(&self, snapshot: &SemanticSnapshot) -> Result<(), SemanticError> {
+        ensure_snapshot_key(self.snapshot_key, snapshot.cache_key(), "traversal query")
     }
+}
+
+fn ensure_snapshot_key(
+    expected: SnapshotKey,
+    current: SnapshotKey,
+    domain: &'static str,
+) -> Result<(), SemanticError> {
+    if expected.lineage != current.lineage {
+        return Err(SemanticError::SnapshotLineageMismatch { domain });
+    }
+    if expected.version != current.version {
+        return Err(SemanticError::StaleCompiledQuery {
+            domain,
+            compiled_version: expected.version,
+            current_version: current.version,
+        });
+    }
+    Ok(())
 }
 
 fn normalize_edge_query(mut query: EdgeQuery) -> EdgeQuery {

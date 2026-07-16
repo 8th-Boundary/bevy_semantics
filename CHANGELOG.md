@@ -14,6 +14,7 @@ All notable changes to `bevy_semantics` will be documented in this file.
 - Added identity pinning and explicit tombstone/revival for static component kinds.
 - Simplified semantic edges to payload-free triples and added transactional tuple-based `add_edges` registration.
 - Added scalar-or-collection `KindLane` Cartesian edge generation, filtering, and transactional bulk removal.
+- Isolated cloned registry snapshot caches and keyed query caches by registry lineage plus version.
 
 ## 0.1.0
 

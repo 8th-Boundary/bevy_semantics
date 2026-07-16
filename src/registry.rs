@@ -1,6 +1,7 @@
 //! Mutable semantic registry and bulk authoring support.
 
 use std::any::{type_name, TypeId};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -13,6 +14,12 @@ use crate::snapshot::SemanticSnapshot;
 use crate::KindRegistration;
 
 type SnapshotCache = Arc<RwLock<Option<(u64, Arc<SemanticSnapshot>)>>>;
+
+static NEXT_REGISTRY_LINEAGE: AtomicU64 = AtomicU64::new(1);
+
+fn next_registry_lineage() -> u64 {
+    NEXT_REGISTRY_LINEAGE.fetch_add(1, Ordering::Relaxed)
+}
 
 /// Canonical core semantic kinds and relations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -72,8 +79,9 @@ pub(crate) struct GraphState {
 }
 
 /// Mutable source of truth for kinds and edge data.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct SemanticRegistry {
+    pub(crate) lineage: u64,
     pub(crate) version: u64,
     pub(crate) kinds: Vec<KindMeta>,
     pub(crate) kind_to_index: HashMap<Kind, usize>,
@@ -88,9 +96,32 @@ pub struct SemanticRegistry {
     bulk_dirty: bool,
 }
 
+impl Clone for SemanticRegistry {
+    fn clone(&self) -> Self {
+        debug_assert_eq!(self.bulk_depth, 0, "cannot clone an active registry batch");
+
+        Self {
+            lineage: next_registry_lineage(),
+            version: self.version,
+            kinds: self.kinds.clone(),
+            kind_to_index: self.kind_to_index.clone(),
+            name_to_kind: self.name_to_kind.clone(),
+            type_to_kind: self.type_to_kind.clone(),
+            kind_to_type: self.kind_to_type.clone(),
+            core: self.core,
+            graph: self.graph.clone(),
+            tombstoned_count: self.tombstoned_count,
+            snapshot_cache: Arc::new(RwLock::new(None)),
+            bulk_depth: 0,
+            bulk_dirty: false,
+        }
+    }
+}
+
 impl Default for SemanticRegistry {
     fn default() -> Self {
         let mut registry = Self {
+            lineage: next_registry_lineage(),
             version: 0,
             kinds: Vec::new(),
             kind_to_index: HashMap::new(),

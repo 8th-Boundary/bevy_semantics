@@ -463,7 +463,7 @@ In that case, keep the semantic relation kind as the stable label and let the en
 - cores: 16 physical, 24 logical
 - memory: 32.0 GiB
 - OS: Windows 11 Pro 64-bit, build 26200
-- Rust: `rustc 1.91.1 (ed61e7d7e 2025-11-07)`
+- Rust: `rustc 1.95.0 (59807616e 2026-04-14)`
 - target: `x86_64-pc-windows-msvc`
 
 ### Latest Criterion Results
@@ -478,7 +478,7 @@ Measured with `cargo bench -p bevy_semantics --bench semantics_bench` on the mac
 | `semantics_bulk_authoring_4k` | `1.9796 ms - 1.9882 ms` |
 | `semantics_cartesian_edges_8x4x8/materialize` | `270.77 ns - 271.68 ns` |
 | `semantics_cartesian_edges_8x4x8/add` | `5.6334 us - 5.6625 us` |
-| `semantics_cartesian_edges_8x4x8/query` | `350.41 ns - 351.93 ns` |
+| `semantics_cartesian_edges_8x4x8/query` | `369.89 ns - 372.17 ns` |
 | `semantics_cartesian_edges_8x4x8/remove` | `3.2380 us - 3.3362 us` |
 | `semantics_lookup_kind_by_name` | `6.6080 ns - 6.6351 ns` |
 | `semantics_const_registration_8` | `2.1106 us - 2.1353 us` |
@@ -486,10 +486,10 @@ Measured with `cargo bench -p bevy_semantics --bench semantics_bench` on the mac
 | `semantics_component_registration/idempotent` | `10.429 ns - 10.525 ns` |
 | `semantics_component_registration/kind_to_component_lookup` | `1.3600 ns - 1.3705 ns` |
 | `semantics_is_a_direct` | `16.730 ns - 16.798 ns` |
-| `semantics_edge_query_dynamic` | `45.947 ns - 46.086 ns` |
-| `semantics_edge_query_compiled` | `32.352 ns - 32.471 ns` |
-| `semantics_traversal_dynamic` | `50.667 ns - 50.859 ns` |
-| `semantics_traversal_compiled` | `32.821 ns - 32.980 ns` |
+| `semantics_edge_query_dynamic` | `46.123 ns - 46.268 ns` |
+| `semantics_edge_query_compiled` | `32.452 ns - 32.660 ns` |
+| `semantics_traversal_dynamic` | `51.091 ns - 51.363 ns` |
+| `semantics_traversal_compiled` | `32.923 ns - 33.166 ns` |
 | `semantics_task_command_derivation_4k` | `2.8105 us - 2.8363 us` |
 | `semantics_task_command_playback_4k` | `149.50 us - 153.30 us` |
 

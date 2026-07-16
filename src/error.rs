@@ -65,6 +65,9 @@ pub enum SemanticError {
         compiled_version: u64,
         current_version: u64,
     },
+    SnapshotLineageMismatch {
+        domain: &'static str,
+    },
     MalformedCommand {
         command: &'static str,
         reason: String,
@@ -153,6 +156,10 @@ impl std::fmt::Display for SemanticError {
             } => write!(
                 f,
                 "stale compiled {domain} query: compiled at version {compiled_version}, current version is {current_version}"
+            ),
+            SemanticError::SnapshotLineageMismatch { domain } => write!(
+                f,
+                "compiled {domain} query belongs to a different registry lineage"
             ),
             SemanticError::MalformedCommand { command, reason } => {
                 write!(f, "malformed {command} command: {reason}")

@@ -15,9 +15,17 @@ use crate::registry::{Core, SemanticRegistry};
 use crate::{EdgeRegistration, SemanticEdge};
 
 const EMPTY_KINDS: [Kind; 0] = [];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct SnapshotKey {
+    pub(crate) lineage: u64,
+    pub(crate) version: u64,
+}
+
 /// Immutable snapshot of the semantic registry state.
 #[derive(Clone, Debug)]
 pub struct SemanticSnapshot {
+    lineage: u64,
     version: u64,
     kinds: Vec<Kind>,
     kind_dense_index: HashMap<Kind, usize>,
@@ -156,6 +164,7 @@ impl SemanticSnapshot {
         }
 
         let mut snapshot = Self {
+            lineage: registry.lineage,
             version: registry.version,
             kinds,
             kind_dense_index,
@@ -185,6 +194,13 @@ impl SemanticSnapshot {
     /// Return the snapshot version.
     pub fn version(&self) -> u64 {
         self.version
+    }
+
+    pub(crate) fn cache_key(&self) -> SnapshotKey {
+        SnapshotKey {
+            lineage: self.lineage,
+            version: self.version,
+        }
     }
 
     /// Return all kinds in dense order.
@@ -338,14 +354,14 @@ impl SemanticSnapshot {
         cached.binary_search(&target).is_ok()
     }
 
-    /// Start an edge query builder bound to this snapshot version.
+    /// Start an edge query builder bound to this snapshot lineage and version.
     pub fn edge_query(&self) -> EdgeQueryBuilder {
-        EdgeQueryBuilder::new(Some(self.version))
+        EdgeQueryBuilder::new(Some(self.cache_key()))
     }
 
-    /// Start a traversal query builder bound to this snapshot version.
+    /// Start a traversal query builder bound to this snapshot lineage and version.
     pub fn traversal_query(&self) -> TraversalQueryBuilder {
-        TraversalQueryBuilder::new(Some(self.version))
+        TraversalQueryBuilder::new(Some(self.cache_key()))
     }
 
     pub(crate) fn edge_query_cache(

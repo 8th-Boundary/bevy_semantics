@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use bevy_semantics::{
-    EdgeDirection, Kind, SemanticEdge, SemanticError, SemanticRegistry, Semantics,
+    EdgeDirection, EdgeQuery, Kind, SemanticEdge, SemanticError, SemanticRegistry, Semantics,
+    TraversalQuery,
 };
 use bevy_semantics::{SemanticCommand, SemanticPlaybackQueue};
 use bevy_tasks::{futures_lite::future, AsyncComputeTaskPool};
@@ -484,6 +485,85 @@ fn snapshot_arc_reuses_cached_snapshot_until_mutation() -> Result<(), SemanticEr
     let third = registry.snapshot_cached();
     assert!(!Arc::ptr_eq(&first, &third));
     assert_eq!(third.version(), registry.version());
+    Ok(())
+}
+
+#[test]
+fn cloned_registries_keep_independent_snapshot_caches() -> Result<(), SemanticError> {
+    let registry = SemanticRegistry::default();
+    let _ = registry.snapshot_cached();
+    let mut left = registry.clone();
+    let mut right = registry.clone();
+
+    let left_only = left.register_kind("left_only")?;
+    let right_only = right.register_kind("right_only")?;
+    assert_eq!(left.version(), right.version());
+
+    let left_snapshot = left.snapshot_cached();
+    let right_snapshot = right.snapshot_cached();
+    assert_eq!(left_snapshot.kind("left_only"), Some(left_only));
+    assert_eq!(left_snapshot.kind("right_only"), None);
+    assert_eq!(right_snapshot.kind("right_only"), Some(right_only));
+    assert_eq!(right_snapshot.kind("left_only"), None);
+    Ok(())
+}
+
+#[test]
+fn query_caches_are_scoped_to_registry_lineage() -> Result<(), SemanticError> {
+    let mut base = SemanticRegistry::default();
+    let relation = base.register_kind("related_to")?;
+    let a = base.register_kind("A")?;
+    let b = base.register_kind("B")?;
+    let c = base.register_kind("C")?;
+    let mut left = base.clone();
+    let mut right = base.clone();
+    left.add_edge(a, relation, b)?;
+    right.add_edge(a, relation, c)?;
+    assert_eq!(left.version(), right.version());
+
+    let left_snapshot = left.snapshot();
+    let right_snapshot = right.snapshot();
+    let edge_query = EdgeQuery::builder().subject(a).relation(relation);
+    assert_eq!(edge_query.run_targets(&left_snapshot)?, vec![b]);
+    assert_eq!(edge_query.run_targets(&right_snapshot)?, vec![c]);
+
+    let compiled_edge = edge_query.compile(&left_snapshot)?;
+    assert!(matches!(
+        compiled_edge.run_edges(&right_snapshot),
+        Err(SemanticError::SnapshotLineageMismatch {
+            domain: "edge query"
+        })
+    ));
+    assert!(matches!(
+        left_snapshot.edge_query().run_edges(&right_snapshot),
+        Err(SemanticError::SnapshotLineageMismatch {
+            domain: "edge query"
+        })
+    ));
+
+    let traversal_query = TraversalQuery::builder()
+        .seed(a)
+        .relation(relation)
+        .depth_1();
+    assert_eq!(traversal_query.run_kinds(&left_snapshot)?, vec![b]);
+    assert_eq!(traversal_query.run_kinds(&right_snapshot)?, vec![c]);
+
+    let compiled_traversal = traversal_query.compile(&left_snapshot)?;
+    assert!(matches!(
+        compiled_traversal.run_kinds(&right_snapshot),
+        Err(SemanticError::SnapshotLineageMismatch {
+            domain: "traversal query"
+        })
+    ));
+    assert!(matches!(
+        left_snapshot
+            .traversal_query()
+            .seed(a)
+            .run_kinds(&right_snapshot),
+        Err(SemanticError::SnapshotLineageMismatch {
+            domain: "traversal query"
+        })
+    ));
     Ok(())
 }
 

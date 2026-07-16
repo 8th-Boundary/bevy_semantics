@@ -27,7 +27,7 @@ It is not:
 - Query execution must support compilation and caching.
 - No silent aliasing, no implicit normalization beyond canonical name trimming.
 - All fallible public APIs return `Result<_, SemanticError>`.
-- `SemanticError` covers collisions, unknown kinds, type conflicts, malformed commands, invalid query states, stale compiled queries, and version mismatches.
+- `SemanticError` covers collisions, unknown kinds, type conflicts, malformed commands, invalid query states, stale compiled queries, lineage mismatches, and version mismatches.
 
 ## 2. Identity Model
 
@@ -68,7 +68,7 @@ struct DenseKind(u32);
 
 Rules:
 - used for array indexing, adjacency tables, caches, and bitsets
-- only valid inside a given snapshot version
+- only valid inside a given snapshot lineage and version
 - may be rebuilt when the registry changes
 - is never exposed in the public API
 
@@ -301,7 +301,7 @@ Rules:
 - a single writer stages commands and builds the next snapshot
 - snapshot swap must be atomic from the reader point of view
 - snapshot versions must change on any material semantic mutation
-- caches are version-aware and tied to a snapshot version
+- caches are keyed by registry lineage and snapshot version
 
 Snapshot contents:
 - kind registry data
@@ -366,7 +366,7 @@ Public query types:
 - `EdgeQuery`, `EdgeQueryBuilder`, `CompiledEdgeQuery`
 - `TraversalQuery`, `TraversalQueryBuilder`, `CompiledTraversalQuery`
 
-Compiled queries expose the same terminal methods as their builders and are bound to a specific snapshot version.
+Compiled queries expose the same terminal methods as their builders and are bound to a specific registry lineage and snapshot version.
 
 Builder creation:
 - `SemanticSnapshot::edge_query() -> EdgeQueryBuilder`
@@ -441,18 +441,18 @@ Recommended defaults:
 - `max_results = None`
 
 Version safety:
-- compiled queries are bound to the snapshot version they were compiled against
-- a version mismatch invalidates cached results
+- compiled queries are bound to the registry lineage and snapshot version they were compiled against
+- a lineage or version mismatch invalidates cached results
 - direct helper methods may recompile automatically
 - explicit compiled-query execution may return a stale-query error
 
 ## 9. Caching
 
-Cache only read-only derived results tied to a snapshot version.
+Cache only read-only derived results tied to a registry lineage and snapshot version.
 
 Cache keys should be based on:
 - normalized query fingerprint
-- snapshot version
+- registry lineage and snapshot version
 
 Good caches:
 - exact triple existence
