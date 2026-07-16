@@ -80,19 +80,20 @@ fn register_schema(registry: &mut SemanticRegistry) -> Result<(), SemanticError>
 ```
 
 `CREATURE`, `WOLF`, and `PREYS_ON` are ordinary `Kind` constants. The generated
-`CREATURE_KINDS` slice retains their canonical names so a specific runtime
-registry can publish them in one transactional call. A compile-time macro cannot
-register globally because registries are runtime values and may be world-local.
-For a single named declaration, use `StaticKind`:
+`CREATURE_KINDS` is a borrowed slice of `KindRegistration` tuples that retains
+their canonical names so a specific runtime registry can publish them in one
+transactional call. A compile-time macro cannot register globally because
+registries are runtime values and may be world-local. For a single constant,
+pass its name separately. The slice reference is a zero-allocation pointer and
+length; callers pass `CREATURE_KINDS` directly without adding another `&`:
 
 ```rust
-use bevy_semantics::{static_kind, Kind, SemanticError, SemanticRegistry, StaticKind};
+use bevy_semantics::{kind, Kind, SemanticError, SemanticRegistry};
 
-const CREATURE_DECL: StaticKind = static_kind!("Creature");
+const CREATURE: Kind = kind!("Creature");
 
 fn register_creature(registry: &mut SemanticRegistry) -> Result<Kind, SemanticError> {
-    registry.register_const(CREATURE_DECL)?;
-    Ok(CREATURE_DECL.kind())
+    registry.register_const("Creature", CREATURE)
 }
 ```
 
@@ -205,7 +206,7 @@ Use this when authoring outside Bevy or in setup code.
 
 Main methods:
 - `register_kind(name)`
-- `register_const(declaration)`
+- `register_const(name, kind)`
 - `register_consts(declarations)`
 - `typed_kind::<T>()`
 - `typed_kind_named::<T>(name)`
@@ -437,7 +438,7 @@ Measured with `cargo bench -p bevy_semantics --bench semantics_bench` on the mac
 | `semantics_snapshot_cached_4k` | `18.993 ns - 19.675 ns` |
 | `semantics_bulk_authoring_4k` | `2.4334 ms - 2.5356 ms` |
 | `semantics_lookup_kind_by_name` | `8.2561 ns - 8.6173 ns` |
-| `semantics_const_registration_8` | `3.2734 us - 3.5078 us` |
+| `semantics_const_registration_8` | `2.1351 us - 2.1559 us` |
 | `semantics_component_registration/cold_world` | `9.8476 us - 10.361 us` |
 | `semantics_component_registration/idempotent` | `12.678 ns - 13.389 ns` |
 | `semantics_component_registration/kind_to_component_lookup` | `1.6262 ns - 1.7140 ns` |

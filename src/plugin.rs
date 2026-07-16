@@ -11,7 +11,8 @@ use crate::direction::EdgeDirection;
 use crate::query::SemanticCommand;
 use crate::registry::{canonicalize_name, hash_canonical_name};
 use crate::{
-    Kind, SemanticComponents, SemanticError, SemanticRegistry, SemanticSnapshot, StaticKind, Weight,
+    Kind, KindRegistration, SemanticComponents, SemanticError, SemanticRegistry, SemanticSnapshot,
+    Weight,
 };
 
 /// Bevy resource that owns semantic authoring state and the cached read model.
@@ -43,13 +44,20 @@ impl Semantics {
         self.0.register_kind(name)
     }
 
-    /// Register one compile-time kind declaration immediately.
-    pub fn register_const(&mut self, declaration: StaticKind) -> Result<Kind, SemanticError> {
-        self.0.register_const(declaration)
+    /// Register one compile-time kind and its canonical name immediately.
+    pub fn register_const(
+        &mut self,
+        name: &'static str,
+        kind: Kind,
+    ) -> Result<Kind, SemanticError> {
+        self.0.register_const(name, kind)
     }
 
     /// Register a group of compile-time kind declarations immediately.
-    pub fn register_consts(&mut self, declarations: &[StaticKind]) -> Result<(), SemanticError> {
+    pub fn register_consts(
+        &mut self,
+        declarations: &[KindRegistration],
+    ) -> Result<(), SemanticError> {
         self.0.register_consts(declarations)
     }
 
@@ -241,16 +249,16 @@ impl<'a> SemanticEdit<'a> {
         self
     }
 
-    /// Register one compile-time kind declaration immediately.
-    pub fn register_const(mut self, declaration: StaticKind) -> Self {
+    /// Register one compile-time kind and its canonical name immediately.
+    pub fn register_const(mut self, name: &'static str, kind: Kind) -> Self {
         if self.error.is_ok() {
-            self.error = self.semantics.0.register_const(declaration).map(|_| ());
+            self.error = self.semantics.0.register_const(name, kind).map(|_| ());
         }
         self
     }
 
     /// Register a group of compile-time kind declarations immediately.
-    pub fn register_consts(mut self, declarations: &[StaticKind]) -> Self {
+    pub fn register_consts(mut self, declarations: &[KindRegistration]) -> Self {
         if self.error.is_ok() {
             self.error = self.semantics.0.register_consts(declarations);
         }

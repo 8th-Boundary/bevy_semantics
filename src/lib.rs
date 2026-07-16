@@ -15,7 +15,6 @@ pub mod query;
 pub mod registry;
 pub mod semantic_component;
 pub mod snapshot;
-pub mod static_kind;
 pub mod weight;
 
 pub mod plugin;
@@ -23,7 +22,7 @@ pub mod plugin;
 pub mod prelude {
     pub use crate::direction::EdgeDirection;
     pub use crate::error::SemanticError;
-    pub use crate::kind::Kind;
+    pub use crate::kind::{Kind, KindRegistration};
     pub use crate::plugin::{
         CommandsExt, SemanticEdit, SemanticPlaybackQueue, Semantics, SemanticsPlugin,
     };
@@ -34,14 +33,13 @@ pub mod prelude {
     pub use crate::registry::{Core, SemanticRegistry, SemanticRegistryBatch};
     pub use crate::semantic_component::{SemanticAppExt, SemanticComponents, SemanticWorldExt};
     pub use crate::snapshot::SemanticSnapshot;
-    pub use crate::static_kind::StaticKind;
     pub use crate::weight::Weight;
-    pub use crate::{kind, semantic_component, semantic_kinds, static_kind, SemanticComponent};
+    pub use crate::{kind, semantic_component, semantic_kinds, SemanticComponent};
 }
 
 pub use direction::EdgeDirection;
 pub use error::SemanticError;
-pub use kind::Kind;
+pub use kind::{Kind, KindRegistration};
 pub use query::{
     CompiledEdgeQuery, CompiledTraversalQuery, EdgeQuery, EdgeQueryBuilder, SemanticCommand,
     SemanticEdge, TraversalQuery, TraversalQueryBuilder,
@@ -51,7 +49,6 @@ pub use semantic_component::{
     SemanticAppExt, SemanticComponent, SemanticComponents, SemanticWorldExt,
 };
 pub use snapshot::SemanticSnapshot;
-pub use static_kind::StaticKind;
 pub use weight::Weight;
 
 pub use plugin::{CommandsExt, SemanticEdit, SemanticPlaybackQueue, Semantics, SemanticsPlugin};
@@ -65,14 +62,6 @@ pub use bevy_semantics_derive::{semantic_component, SemanticComponent};
 macro_rules! kind {
     ($name:literal) => {
         $crate::Kind::from_raw($crate::__kind_raw!($name))
-    };
-}
-
-/// Declare one compile-time kind while retaining its name for registration.
-#[macro_export]
-macro_rules! static_kind {
-    ($name:literal) => {
-        $crate::StaticKind::from_raw_parts($name, $crate::kind!($name))
     };
 }
 
@@ -98,9 +87,9 @@ macro_rules! semantic_kinds {
         )+
 
         $(#[$group_meta])*
-        $vis const $group: &[$crate::StaticKind] = &[
+        $vis const $group: &[$crate::KindRegistration] = &[
             $(
-                $crate::StaticKind::from_raw_parts($name, $constant)
+                ($name, $constant)
             ),+
         ];
     };

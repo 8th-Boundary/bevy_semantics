@@ -210,6 +210,7 @@ fn unregister_namespace_removes_matching_kinds_and_edges() -> Result<(), Semanti
     let rabbit = semantics.register_kind("game::Rabbit")?;
     let preys_on = semantics.register_kind("game::preys_on")?;
     let stone = semantics.register_kind("other::Stone")?;
+    let gameplay_marker = semantics.register_kind("gameplay::Marker")?;
 
     semantics.add_edge(beast, core.is_a, creature)?;
     semantics.add_edge(canine, core.is_a, beast)?;
@@ -233,6 +234,7 @@ fn unregister_namespace_removes_matching_kinds_and_edges() -> Result<(), Semanti
         ));
     }
     assert_eq!(semantics.kind("other::Stone")?, stone);
+    assert_eq!(semantics.kind("gameplay::Marker")?, gameplay_marker);
     assert!(matches!(
         semantics.kind_of::<Wolf>(),
         Err(SemanticError::UnknownKind { .. })

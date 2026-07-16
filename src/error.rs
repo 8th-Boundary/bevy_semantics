@@ -40,7 +40,7 @@ pub enum SemanticError {
         declared: Kind,
         generated: Kind,
     },
-    StaticKindDefinitionMismatch {
+    KindRegistrationMismatch {
         name: &'static str,
         declared: Kind,
         generated: Kind,
@@ -116,13 +116,13 @@ impl std::fmt::Display for SemanticError {
                 f,
                 "static semantic kind mismatch for {type_name}: name '{name}' generates {generated}, but the type declares {declared}"
             ),
-            SemanticError::StaticKindDefinitionMismatch {
+            SemanticError::KindRegistrationMismatch {
                 name,
                 declared,
                 generated,
             } => write!(
                 f,
-                "static kind declaration mismatch: name '{name}' generates {generated}, but the declaration contains {declared}"
+                "kind registration mismatch: name '{name}' generates {generated}, but the registration contains {declared}"
             ),
             SemanticError::KindComponentConflict {
                 kind,

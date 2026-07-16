@@ -6,9 +6,9 @@ use bevy_semantics::core::{
     CANT_BE, CAN_BE, HAS_PART, INVERSE_OF, IS_A, NAMESPACE, NEGATES, NOT_A, PART_OF, RELATION,
 };
 use bevy_semantics::{
-    kind, semantic_component, semantic_kinds, static_kind, Kind, SemanticAppExt, SemanticComponent,
+    kind, semantic_component, semantic_kinds, Kind, SemanticAppExt, SemanticComponent,
     SemanticComponents, SemanticError, SemanticRegistry, SemanticWorldExt, Semantics,
-    SemanticsPlugin, StaticKind,
+    SemanticsPlugin,
 };
 
 const MOVE_TO: Kind = kind!("MoveTo");
@@ -21,7 +21,7 @@ semantic_kinds! {
     };
 }
 
-const STATIC_RABBIT: StaticKind = static_kind!("StaticRabbit");
+const STATIC_RABBIT: Kind = kind!("StaticRabbit");
 
 #[derive(Component, SemanticComponent)]
 #[semantic(kind = "  Health  ")]
@@ -85,8 +85,7 @@ fn grouped_compile_time_kinds_register_their_names() -> Result<(), SemanticError
 
     assert_eq!(registry.kind("StaticCreature"), Some(STATIC_CREATURE));
     assert_eq!(registry.kind("StaticWolf"), Some(STATIC_WOLF));
-    assert_eq!(TEST_KINDS[0].kind(), STATIC_CREATURE);
-    assert_eq!(TEST_KINDS[0].name(), "StaticCreature");
+    assert_eq!(TEST_KINDS[0], ("StaticCreature", STATIC_CREATURE));
 
     let version = registry.version();
     registry.register_consts(TEST_KINDS)?;
@@ -99,25 +98,25 @@ fn single_compile_time_kind_registers_and_revives() -> Result<(), SemanticError>
     let mut registry = SemanticRegistry::default();
 
     assert_eq!(
-        registry.register_const(STATIC_RABBIT)?,
-        STATIC_RABBIT.kind()
+        registry.register_const("StaticRabbit", STATIC_RABBIT)?,
+        STATIC_RABBIT
     );
-    registry.tombstone_kind(STATIC_RABBIT.kind())?;
-    assert_eq!(registry.is_tombstoned(STATIC_RABBIT.kind()), Some(true));
+    registry.tombstone_kind(STATIC_RABBIT)?;
+    assert_eq!(registry.is_tombstoned(STATIC_RABBIT), Some(true));
 
     assert_eq!(
-        registry.register_const(STATIC_RABBIT)?,
-        STATIC_RABBIT.kind()
+        registry.register_const("StaticRabbit", STATIC_RABBIT)?,
+        STATIC_RABBIT
     );
-    assert_eq!(registry.is_tombstoned(STATIC_RABBIT.kind()), Some(false));
+    assert_eq!(registry.is_tombstoned(STATIC_RABBIT), Some(false));
     Ok(())
 }
 
 #[test]
 fn grouped_registration_validates_before_mutating() {
     let mut registry = SemanticRegistry::default();
-    let valid = static_kind!("ValidStaticKind");
-    let invalid = StaticKind::from_raw_parts("InvalidStaticKind", kind!("DifferentStaticKind"));
+    let valid = ("ValidStaticKind", kind!("ValidStaticKind"));
+    let invalid = ("InvalidStaticKind", kind!("DifferentStaticKind"));
 
     let error = registry
         .register_consts(&[valid, invalid])
@@ -125,7 +124,7 @@ fn grouped_registration_validates_before_mutating() {
 
     assert!(matches!(
         error,
-        SemanticError::StaticKindDefinitionMismatch { .. }
+        SemanticError::KindRegistrationMismatch { .. }
     ));
     assert_eq!(registry.kind("ValidStaticKind"), None);
 }

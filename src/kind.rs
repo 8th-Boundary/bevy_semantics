@@ -7,6 +7,12 @@ use bevy_reflect::Reflect;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Reflect)]
 pub struct Kind(u64);
 
+/// A canonical name paired with the compile-time [`Kind`] it must produce.
+///
+/// Registration APIs validate the pair before publishing the name. Graph and
+/// component APIs continue to use [`Kind`] directly.
+pub type KindRegistration = (&'static str, Kind);
+
 impl Kind {
     /// Construct a kind from its stable raw representation.
     ///
