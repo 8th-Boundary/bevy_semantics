@@ -16,7 +16,7 @@ It is not:
 - a general graph database
 - a text search engine
 - a synonym or alias system in v1
-- a weighted pathfinding engine in v1
+- a relation-payload store or pathfinding engine
 
 ## 1. Core Rules
 
@@ -72,25 +72,7 @@ Rules:
 - may be rebuilt when the registry changes
 - is never exposed in the public API
 
-### 2.3 Weight
-
-`Weight` is the public edge weight type.
-
-```rust
-#[repr(transparent)]
-pub struct Weight(i64);
-```
-
-Rules:
-- `Weight` is opaque, stable, and cheap to copy
-- it uses the same signed 64-bit storage in every layer
-- it is a scalar newtype, not an enum, in v1
-- `Weight::default()` is zero
-- `Weight` implements `From<i64>` and `From<Weight> for i64`
-- comparisons are signed numeric comparisons on the inner `i64`
-- if fractional semantics are needed, encode them as fixed-point integers or separate metadata
-
-### 2.4 EdgeDirection
+### 2.3 EdgeDirection
 
 `EdgeDirection` selects which side of a relation to traverse.
 
@@ -198,7 +180,7 @@ Direct registry API:
 - `unregister_kind(kind) -> Result<bool, SemanticError>`
 - `unregister_namespace(namespace) -> Result<bool, SemanticError>`
 - `add_edge(subject, relation, target) -> Result<bool, SemanticError>`
-- `add_edge_weighted(subject, relation, target, weight) -> Result<bool, SemanticError>`
+- `add_edges(edges) -> Result<bool, SemanticError>`
 - `remove_edge(subject, relation, target) -> Result<bool, SemanticError>`
 - `has_edge(subject, relation, target) -> bool`
 - `apply_commands(commands) -> Result<bool, SemanticError>`
@@ -263,20 +245,14 @@ struct SemanticEdge {
     subject: Kind,
     relation: Kind,
     target: Kind,
-    weight: Option<Weight>,
 }
 ```
 
 Edge identity:
 - `(subject, relation, target)`
-- weight is not part of identity
-
-Weight:
-- `Weight`
-- used for optional relation metadata, not for identity
-- unweighted edges are the default
-- use `add_edge_weighted` only when the relation needs a scalar payload
-- v1 uses one scalar type only; do not introduce a heterogeneous `EdgeWeight` enum in v1
+- `EdgeRegistration` aliases this tuple for bulk registration
+- an edge has no built-in payload
+- relation-specific values live in application resources keyed by the edge tuple or another domain key
 
 Storage:
 - canonical edge storage should be a dense SoA or equivalent compact edge table
@@ -363,7 +339,8 @@ Core commands:
 - `RegisterKind { name: Arc<str> }`
 - `UnregisterKind { kind: Kind }`
 - `RegisterTypedKind { type_id: TypeId, name: Option<Arc<str>> }`
-- `AddEdge { subject: Kind, relation: Kind, target: Kind, weight: Option<Weight> }`
+- `AddEdge { subject: Kind, relation: Kind, target: Kind }`
+- `AddEdges { edges: Vec<EdgeRegistration> }`
 - `RemoveEdge { subject: Kind, relation: Kind, target: Kind }`
 
 Rules:
@@ -373,7 +350,8 @@ Rules:
 - invalid registrations and collisions return explicit errors
 - unregistering a kind removes its incident edges and any type binding
 - core kinds cannot be unregistered
-- `AddEdge` upserts the triple and optional weight metadata
+- `AddEdge` inserts the triple idempotently
+- `AddEdges` validates the entire tuple collection before inserting any edge
 - `RemoveEdge` removes by triple only
 - compiled queries and caches must become stale when versions change
 
@@ -400,7 +378,6 @@ Registry lookups are direct methods, not query objects.
 - `relation`, `relations`
 - `target`, `targets`
 - `outgoing`, `incoming`, `both`
-- `weight_any`, `weight_missing`, `weight_present`, `weight_eq(weight)`, `weight_ne(weight)`, `weight_gt(weight)`, `weight_gte(weight)`, `weight_lt(weight)`, `weight_lte(weight)`, `weight_range(min, max)`
 - `subjects_from`, `targets_from`
 - `intersect_subjects_from`, `intersect_targets_from`
 - `select_edges`, `select_subjects`, `select_targets`
@@ -423,11 +400,8 @@ Registry lookups are direct methods, not query objects.
 - `run_count(snapshot) -> usize`
 
 Range semantics:
-- `weight_range(min, max)` is inclusive on both ends
 - `depth_to(n)` is inclusive
 - depth arguments are `usize` hop counts
-
-Weight predicate inputs are `Weight` values, and missing weights are matched explicitly via `weight_missing`.
 
 Neighbor lookup is a direct helper only in v1; there is no dedicated neighbor query type.
 
@@ -519,8 +493,7 @@ Convenience command examples:
 - `unregister_namespace("game")`
 - `typed_kind::<Health>()`
 - `typed_kind_named::<Health>("Health")`
-- `semantics.add_edge(a, is_a, b).add_edge(c, is_a, d).expect("seed taxonomy")`
-- `add_edge_weighted(a, priority, b, Weight::from(10))`
+- `semantics.add_edges([(a, is_a, b), (c, is_a, d)]).expect("seed taxonomy")`
 - `remove_edge(a, is_a, b)`
 
 ## 11. Serialization
@@ -529,7 +502,7 @@ Serde support is optional in v1.
 
 Recommended serializable forms:
 - `Kind` as canonical name or hex digest
-- `Weight` as `i64`
+- `EdgeRegistration` as a semantic triple
 - command batches
 - query builders
 
@@ -547,8 +520,8 @@ Tests must cover:
 - typed kind registration
 - core seed relations
 - exact triple lookup
-- unweighted edge storage and optional weight filtering
-- edge weight upsert on repeated `AddEdge`
+- payload-free edge storage
+- transactional and idempotent bulk edge registration
 - forward and reverse adjacency
 - transitive `is_a` traversal
 - nested query composition
@@ -580,7 +553,6 @@ Benchmark graph profiles:
 
 Suggested crate layout:
 - `kind.rs`
-- `weight.rs`
 - `registry.rs`
 - `graph.rs`
 - `snapshot.rs`
@@ -610,7 +582,7 @@ Do not include in v1:
 - mutable shared read/write graph
 - stored reverse relation for `is_a`
 - automatic semantic inference engine
-- weighted pathfinding heuristics beyond basic filtering
+- built-in relation payloads or pathfinding heuristics
 
 ## 17. V1 Summary
 

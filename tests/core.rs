@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy_semantics::{
-    EdgeDirection, SemanticEdge, SemanticError, SemanticRegistry, Semantics, Weight,
+    EdgeDirection, Kind, SemanticEdge, SemanticError, SemanticRegistry, Semantics,
 };
 use bevy_semantics::{SemanticCommand, SemanticPlaybackQueue};
 use bevy_tasks::{futures_lite::future, AsyncComputeTaskPool};
@@ -55,7 +55,7 @@ fn semantics_facade_queries_work() -> Result<(), SemanticError> {
 }
 
 #[test]
-fn fluent_edit_chain_supports_typed_and_weighted_edges() -> Result<(), SemanticError> {
+fn fluent_edit_chain_supports_typed_and_bulk_edges() -> Result<(), SemanticError> {
     #[derive(Debug)]
     struct Marker;
     #[derive(Debug)]
@@ -89,22 +89,17 @@ fn fluent_edit_chain_supports_typed_and_weighted_edges() -> Result<(), SemanticE
 
     semantics
         .edit()
-        .add_edge(beast, core.is_a, creature)
-        .add_edge(canine, core.is_a, beast)
-        .add_edge(wolf, core.is_a, canine)
-        .add_edge_weighted(wolf, damage, marker, Weight::from(7))
+        .add_edges([
+            (beast, core.is_a, creature),
+            (canine, core.is_a, beast),
+            (wolf, core.is_a, canine),
+            (wolf, damage, marker),
+        ])
         .expect("seed edit chain");
 
     let snapshot = semantics.snapshot();
     assert_eq!(snapshot.kind("damage"), Some(damage));
-    assert_eq!(
-        snapshot
-            .edges()
-            .iter()
-            .find(|edge| edge.subject == wolf && edge.relation == damage && edge.target == marker)
-            .map(|edge| edge.weight),
-        Some(Some(Weight::from(7)))
-    );
+    assert!(snapshot.has_edge(wolf, damage, marker));
     assert!(snapshot.is_a(wolf, creature));
     Ok(())
 }
@@ -123,6 +118,28 @@ fn same_name_registration_is_stable() -> Result<(), SemanticError> {
     assert_eq!(registry.kind("  Foo  "), Some(first));
     assert!(after_first > before);
     assert_eq!(registry.version(), after_first);
+    Ok(())
+}
+
+#[test]
+fn bulk_edge_registration_is_transactional_and_idempotent() -> Result<(), SemanticError> {
+    let mut registry = SemanticRegistry::default();
+    let relation = registry.register_kind("related_to")?;
+    let a = registry.register_kind("A")?;
+    let b = registry.register_kind("B")?;
+    let c = registry.register_kind("C")?;
+    let unknown = Kind::from(u64::MAX);
+
+    let error = registry
+        .add_edges([(a, relation, b), (b, relation, unknown)])
+        .expect_err("all edge tuples should validate before insertion");
+    assert!(matches!(error, SemanticError::UnknownKind { kind } if kind == unknown));
+    assert!(!registry.has_edge(a, relation, b));
+
+    assert!(registry.add_edges([(a, relation, b), (b, relation, c)])?);
+    let version = registry.version();
+    assert!(!registry.add_edges([(a, relation, b), (b, relation, c)])?);
+    assert_eq!(registry.version(), version);
     Ok(())
 }
 
@@ -331,10 +348,7 @@ fn edge_queries_and_traversal_are_deterministic() -> Result<(), SemanticError> {
         let a = batch.register_kind("A")?;
         let b = batch.register_kind("B")?;
         let c = batch.register_kind("C")?;
-        let weight = Weight::from(7);
-
-        batch.add_edge_weighted(a, is_a, b, weight)?;
-        batch.add_edge(b, is_a, c)?;
+        batch.add_edges([(a, is_a, b), (b, is_a, c)])?;
 
         batch.snapshot()
     };
@@ -344,7 +358,6 @@ fn edge_queries_and_traversal_are_deterministic() -> Result<(), SemanticError> {
     let a = registry.kind("A").expect("A kind");
     let b = registry.kind("B").expect("B kind");
     let c = registry.kind("C").expect("C kind");
-    let weight = Weight::from(7);
 
     assert_eq!(snapshot.targets(a, is_a), &[b]);
     assert_eq!(snapshot.subjects(is_a, b), &[a]);
@@ -354,7 +367,7 @@ fn edge_queries_and_traversal_are_deterministic() -> Result<(), SemanticError> {
     );
     assert!(snapshot.is_a(a, c));
 
-    let edge = SemanticEdge::weighted(a, is_a, b, weight);
+    let edge = SemanticEdge::new(a, is_a, b);
     assert_eq!(
         snapshot
             .edge_query()
@@ -384,19 +397,8 @@ fn edge_queries_and_traversal_are_deterministic() -> Result<(), SemanticError> {
             .edge_query()
             .relation(is_a)
             .target(c)
-            .weight_missing()
             .run_subjects(&snapshot)?,
         vec![b]
-    );
-
-    assert_eq!(
-        snapshot
-            .edge_query()
-            .weight_eq(weight)
-            .relation(is_a)
-            .target(b)
-            .run_subjects(&snapshot)?,
-        vec![a]
     );
     assert_eq!(
         snapshot
@@ -558,28 +560,18 @@ fn task_commands_can_be_played_back_later() -> Result<(), SemanticError> {
             .run_edges(&snapshot)
             .expect("drops edges");
 
-        let mut commands = Vec::with_capacity(sq_prey_edges.len() + sq_drop_edges.len());
-        commands.extend(
+        let mut edges = Vec::with_capacity(sq_prey_edges.len() + sq_drop_edges.len());
+        edges.extend(
             sq_prey_edges
                 .into_iter()
-                .map(|edge| SemanticCommand::AddEdge {
-                    subject: edge.target,
-                    relation: predated_by,
-                    target: edge.subject,
-                    weight: None,
-                }),
+                .map(|edge| (edge.target, predated_by, edge.subject)),
         );
-        commands.extend(
+        edges.extend(
             sq_drop_edges
                 .into_iter()
-                .map(|edge| SemanticCommand::AddEdge {
-                    subject: edge.target,
-                    relation: dropped_by,
-                    target: edge.subject,
-                    weight: None,
-                }),
+                .map(|edge| (edge.target, dropped_by, edge.subject)),
         );
-        commands
+        vec![SemanticCommand::AddEdges { edges }]
     });
 
     let commands = loop {

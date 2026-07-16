@@ -54,30 +54,29 @@ fn setup_semantics_impl(
     let registrations: &[KindRegistration] = DEMO_KINDS;
     semantics.register_consts(registrations)?;
 
-    semantics.add_edge(PREYS_ON, IS_A, RELATION)?;
-    semantics.add_edge(PREDATED_BY, IS_A, RELATION)?;
-    semantics.add_edge(DROPS, IS_A, RELATION)?;
-    semantics.add_edge(DROPPED_BY, IS_A, RELATION)?;
-    semantics.add_edge(GROWS_IN, IS_A, RELATION)?;
-
-    semantics.add_edge(PREYS_ON, INVERSE_OF, PREDATED_BY)?;
-    semantics.add_edge(PREDATED_BY, INVERSE_OF, PREYS_ON)?;
-    semantics.add_edge(DROPS, INVERSE_OF, DROPPED_BY)?;
-    semantics.add_edge(DROPPED_BY, INVERSE_OF, DROPS)?;
-
-    semantics.add_edge(BEAST, IS_A, CREATURE)?;
-    semantics.add_edge(CANINE, IS_A, BEAST)?;
-    semantics.add_edge(WOLF, IS_A, CANINE)?;
-    semantics.add_edge(RABBIT, IS_A, BEAST)?;
-    semantics.add_edge(RESOURCE, IS_A, ITEM)?;
-    semantics.add_edge(HERB, IS_A, RESOURCE)?;
-    semantics.add_edge(LOOT, IS_A, ITEM)?;
-    semantics.add_edge(PELT, IS_A, LOOT)?;
-    semantics.add_edge(FOREST, IS_A, PLACE)?;
-
-    semantics.add_edge(WOLF, PREYS_ON, RABBIT)?;
-    semantics.add_edge(WOLF, DROPS, PELT)?;
-    semantics.add_edge(HERB, GROWS_IN, FOREST)?;
+    semantics.add_edges([
+        (PREYS_ON, IS_A, RELATION),
+        (PREDATED_BY, IS_A, RELATION),
+        (DROPS, IS_A, RELATION),
+        (DROPPED_BY, IS_A, RELATION),
+        (GROWS_IN, IS_A, RELATION),
+        (PREYS_ON, INVERSE_OF, PREDATED_BY),
+        (PREDATED_BY, INVERSE_OF, PREYS_ON),
+        (DROPS, INVERSE_OF, DROPPED_BY),
+        (DROPPED_BY, INVERSE_OF, DROPS),
+        (BEAST, IS_A, CREATURE),
+        (CANINE, IS_A, BEAST),
+        (WOLF, IS_A, CANINE),
+        (RABBIT, IS_A, BEAST),
+        (RESOURCE, IS_A, ITEM),
+        (HERB, IS_A, RESOURCE),
+        (LOOT, IS_A, ITEM),
+        (PELT, IS_A, LOOT),
+        (FOREST, IS_A, PLACE),
+        (WOLF, PREYS_ON, RABBIT),
+        (WOLF, DROPS, PELT),
+        (HERB, GROWS_IN, FOREST),
+    ])?;
 
     let snapshot = semantics.snapshot();
     task_state.task = Some(AsyncComputeTaskPool::get().spawn(async move {
@@ -93,28 +92,18 @@ fn setup_semantics_impl(
             .run_edges(&snapshot)
             .expect("drops edges");
 
-        let mut commands = Vec::with_capacity(sq_prey_edges.len() + sq_drop_edges.len());
-        commands.extend(
+        let mut edges = Vec::with_capacity(sq_prey_edges.len() + sq_drop_edges.len());
+        edges.extend(
             sq_prey_edges
                 .into_iter()
-                .map(|edge| SemanticCommand::AddEdge {
-                    subject: edge.target,
-                    relation: PREDATED_BY,
-                    target: edge.subject,
-                    weight: None,
-                }),
+                .map(|edge| (edge.target, PREDATED_BY, edge.subject)),
         );
-        commands.extend(
+        edges.extend(
             sq_drop_edges
                 .into_iter()
-                .map(|edge| SemanticCommand::AddEdge {
-                    subject: edge.target,
-                    relation: DROPPED_BY,
-                    target: edge.subject,
-                    weight: None,
-                }),
+                .map(|edge| (edge.target, DROPPED_BY, edge.subject)),
         );
-        commands
+        vec![SemanticCommand::AddEdges { edges }]
     }));
 
     Ok(())

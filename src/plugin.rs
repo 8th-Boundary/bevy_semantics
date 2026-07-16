@@ -11,8 +11,8 @@ use crate::direction::EdgeDirection;
 use crate::query::SemanticCommand;
 use crate::registry::{canonicalize_name, hash_canonical_name};
 use crate::{
-    Kind, KindRegistration, SemanticComponents, SemanticError, SemanticRegistry, SemanticSnapshot,
-    Weight,
+    EdgeRegistration, Kind, KindRegistration, SemanticComponents, SemanticError, SemanticRegistry,
+    SemanticSnapshot,
 };
 
 /// Bevy resource that owns semantic authoring state and the cached read model.
@@ -191,7 +191,7 @@ impl Semantics {
         self.snapshot().can_reach(start, relation, target, depth)
     }
 
-    /// Insert or update an unweighted semantic edge immediately.
+    /// Insert a semantic edge immediately.
     pub fn add_edge(
         &mut self,
         subject: Kind,
@@ -201,16 +201,12 @@ impl Semantics {
         self.0.add_edge(subject, relation, target)
     }
 
-    /// Insert or update a weighted semantic edge immediately.
-    pub fn add_edge_weighted(
+    /// Insert semantic edges transactionally from tuple records.
+    pub fn add_edges(
         &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: impl Into<Weight>,
+        edges: impl AsRef<[EdgeRegistration]>,
     ) -> Result<bool, SemanticError> {
-        self.0
-            .add_edge_weighted(subject, relation, target, weight.into())
+        self.0.add_edges(edges)
     }
 
     /// Remove a semantic edge immediately.
@@ -341,21 +337,10 @@ impl<'a> SemanticEdit<'a> {
         self
     }
 
-    /// Add a weighted edge to the current semantic state.
-    pub fn add_edge_weighted(
-        mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: impl Into<Weight>,
-    ) -> Self {
+    /// Add tuple-form edges transactionally to the current semantic state.
+    pub fn add_edges(mut self, edges: impl AsRef<[EdgeRegistration]>) -> Self {
         if self.error.is_ok() {
-            let weight = weight.into();
-            self.error = self
-                .semantics
-                .0
-                .add_edge_weighted(subject, relation, target, weight)
-                .map(|_| ());
+            self.error = self.semantics.0.add_edges(edges).map(|_| ());
         }
         self
     }
@@ -465,13 +450,7 @@ pub trait SemanticCommandsExt<'w, 's> {
 
     fn add_edge(&mut self, subject: Kind, relation: Kind, target: Kind) -> &mut Self;
 
-    fn add_edge_weighted(
-        &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: impl Into<Weight>,
-    ) -> &mut Self;
+    fn add_edges(&mut self, edges: impl AsRef<[EdgeRegistration]>) -> &mut Self;
 
     fn remove_edge(&mut self, subject: Kind, relation: Kind, target: Kind) -> &mut Self;
 }
@@ -572,30 +551,18 @@ impl<'w, 's> SemanticCommandsExt<'w, 's> for Commands<'w, 's> {
                 subject,
                 relation,
                 target,
-                weight: None,
             });
         });
         self
     }
 
-    fn add_edge_weighted(
-        &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: impl Into<Weight>,
-    ) -> &mut Self {
-        let weight = Some(weight.into());
+    fn add_edges(&mut self, edges: impl AsRef<[EdgeRegistration]>) -> &mut Self {
+        let edges = edges.as_ref().to_vec();
         self.queue(move |world: &mut World| {
             let mut queue = world
                 .get_resource_mut::<SemanticCommandQueue>()
                 .expect("semantic command buffer is missing; add SemanticsPlugin first");
-            queue.push(SemanticCommand::AddEdge {
-                subject,
-                relation,
-                target,
-                weight,
-            });
+            queue.push(SemanticCommand::AddEdges { edges });
         });
         self
     }

@@ -171,21 +171,20 @@ In other words, `preys_on` is both a kind and a relation label.
 
 ### Edge
 
-An edge is a semantic triple, with optional scalar metadata:
+An edge is exactly one semantic triple:
 
 ```rust
 struct SemanticEdge {
     subject: Kind,
     relation: Kind,
     target: Kind,
-    weight: Option<Weight>,
 }
 ```
 
-- `subject`, `relation`, and `target` identify the edge
-- `weight` is optional
-- unweighted edges are the default
-- `Weight` is a signed `i64` newtype
+`EdgeRegistration` is the tuple alias `(Kind, Kind, Kind)` used by bulk
+registration APIs. Relation-specific payloads belong in application resources,
+for example a `HashMap<EdgeRegistration, Cost>` or a relation-specific map.
+This keeps the shared ontology compact when most relations need no payload.
 
 ### Storage Model
 
@@ -215,7 +214,7 @@ Main methods:
 - `revive_kind(kind)`
 - `unregister_namespace(namespace)`
 - `add_edge(subject, relation, target)`
-- `add_edge_weighted(subject, relation, target, weight)`
+- `add_edges([(subject, relation, target), ...])`
 - `remove_edge(subject, relation, target)`
 - `batch()`
 - `apply_commands(commands)`
@@ -243,7 +242,7 @@ Use this as `Res<Semantics>` or `ResMut<Semantics>` in Bevy.
 - `ResMut<Semantics>` is the write side
 - direct reads live here: `kind`, `kind_of`, `name`, `core`
 - graph reads live here too: `is_a`, `targets`, `subjects`, `neighbors`, `reachable`, `can_reach`, `has_edge`
-- direct writes live here: `register_kind`, `register_const`, `register_consts`, `typed_kind`, `typed_kind_named`, `unregister_kind`, `tombstone_kind`, `revive_kind`, `unregister_namespace`, `add_edge`, `add_edge_weighted`, `remove_edge`
+- direct writes live here: `register_kind`, `register_const`, `register_consts`, `typed_kind`, `typed_kind_named`, `unregister_kind`, `tombstone_kind`, `revive_kind`, `unregister_namespace`, `add_edge`, `add_edges`, `remove_edge`
 - `snapshot()` returns the cached immutable read model for background work
 
 Example shape:
@@ -254,8 +253,10 @@ semantics
     .register_kind("preys_on")
     .register_kind("predated_by")
     .typed_kind_named::<Wolf>("Wolf")
-    .add_edge(wolf, preys_on, rabbit)
-    .add_edge_weighted(wolf, damage, rabbit, Weight::from(7))
+    .add_edges([
+        (wolf, preys_on, rabbit),
+        (rabbit, predated_by, wolf),
+    ])
     .expect("seed semantic schema");
 ```
 
@@ -274,7 +275,7 @@ It supports:
 - `revive_kind`
 - `unregister_namespace`
 - `add_edge`
-- `add_edge_weighted`
+- `add_edges`
 - `remove_edge`
 - `expect(...)`
 - `finish()`
@@ -431,30 +432,34 @@ In that case, keep the semantic relation kind as the stable label and let the en
 
 ### Latest Criterion Results
 
-Measured with `cargo bench -p bevy_semantics --bench semantics_bench` on the machine above after the API cleanup pass.
+Measured with `cargo bench -p bevy_semantics --bench semantics_bench` on the machine above after adopting payload-free edge storage.
 
 | Benchmark | Time |
 | --- | --- |
-| `semantics_snapshot_build_4k` | `1.1788 ms - 1.2537 ms` |
-| `semantics_snapshot_build_4k_tombstoned` | `1.3918 ms - 1.4499 ms` |
-| `semantics_snapshot_cached_4k` | `18.993 ns - 19.675 ns` |
-| `semantics_bulk_authoring_4k` | `2.4334 ms - 2.5356 ms` |
-| `semantics_lookup_kind_by_name` | `8.2561 ns - 8.6173 ns` |
-| `semantics_const_registration_8` | `2.1351 us - 2.1559 us` |
-| `semantics_component_registration/cold_world` | `9.8476 us - 10.361 us` |
-| `semantics_component_registration/idempotent` | `12.678 ns - 13.389 ns` |
-| `semantics_component_registration/kind_to_component_lookup` | `1.6262 ns - 1.7140 ns` |
-| `semantics_is_a_direct` | `19.666 ns - 20.468 ns` |
-| `semantics_edge_query_dynamic` | `56.813 ns - 59.712 ns` |
-| `semantics_edge_query_compiled` | `38.923 ns - 41.236 ns` |
-| `semantics_traversal_dynamic` | `60.886 ns - 63.915 ns` |
-| `semantics_traversal_compiled` | `39.365 ns - 41.827 ns` |
-| `semantics_task_command_derivation_4k` | `329.07 ns - 344.58 ns` |
-| `semantics_task_command_playback_4k` | `43.020 us - 46.773 us` |
+| `semantics_snapshot_build_4k` | `952.61 us - 961.38 us` |
+| `semantics_snapshot_build_4k_tombstoned` | `1.0975 ms - 1.1063 ms` |
+| `semantics_snapshot_cached_4k` | `16.122 ns - 16.195 ns` |
+| `semantics_bulk_authoring_4k` | `1.9796 ms - 1.9882 ms` |
+| `semantics_lookup_kind_by_name` | `6.6080 ns - 6.6351 ns` |
+| `semantics_const_registration_8` | `2.1106 us - 2.1353 us` |
+| `semantics_component_registration/cold_world` | `7.7192 us - 7.8640 us` |
+| `semantics_component_registration/idempotent` | `10.429 ns - 10.525 ns` |
+| `semantics_component_registration/kind_to_component_lookup` | `1.3600 ns - 1.3705 ns` |
+| `semantics_is_a_direct` | `16.730 ns - 16.798 ns` |
+| `semantics_edge_query_dynamic` | `45.947 ns - 46.086 ns` |
+| `semantics_edge_query_compiled` | `32.352 ns - 32.471 ns` |
+| `semantics_traversal_dynamic` | `50.667 ns - 50.859 ns` |
+| `semantics_traversal_compiled` | `32.821 ns - 32.980 ns` |
+| `semantics_task_command_derivation_4k` | `2.8105 us - 2.8363 us` |
+| `semantics_task_command_playback_4k` | `149.50 us - 153.30 us` |
+
+The task benchmarks now derive and apply 4,095 edges from the 4,096-node
+fixture. Earlier results accidentally measured an empty derived command list and
+are therefore not comparable.
 
 ## Notes
 
-- `Kind` and `Weight` are opaque newtypes, not type aliases.
-- Relations are unweighted by default. Use weighted edges only when the scalar matters.
+- `Kind` is an opaque newtype, not a type alias.
+- Edges deliberately carry no payload. Store relation-specific values in application resources keyed by an `EdgeRegistration` or another domain key.
 - Core kinds are protected. `unregister_kind` removes ordinary user kinds, their incident edges, and any typed binding. Static component kinds are identity-pinned and must be tombstoned instead.
 - The crate favors deterministic results and cached reads over write-side sophistication.

@@ -12,7 +12,7 @@ use crate::query::{
     CompiledEdgeQuery, CompiledTraversalQuery, EdgeQueryBuilder, TraversalQueryBuilder,
 };
 use crate::registry::{Core, SemanticRegistry};
-use crate::{SemanticEdge, Weight};
+use crate::{EdgeRegistration, SemanticEdge};
 
 const EMPTY_KINDS: [Kind; 0] = [];
 /// Immutable snapshot of the semantic registry state.
@@ -29,7 +29,7 @@ pub struct SemanticSnapshot {
     edge_query_cache: Arc<RwLock<HashMap<EdgeQueryBuilder, Arc<CompiledEdgeQuery>>>>,
     traversal_query_cache: Arc<RwLock<HashMap<TraversalQueryBuilder, Arc<CompiledTraversalQuery>>>>,
     edges: Vec<SemanticEdge>,
-    edge_weight_by_triple: HashMap<(Kind, Kind, Kind), Option<Weight>>,
+    edge_triples: HashSet<EdgeRegistration>,
     outgoing_all: HashMap<Kind, Vec<Kind>>,
     incoming_all: HashMap<Kind, Vec<Kind>>,
     outgoing_by_relation: HashMap<(Kind, Kind), Vec<Kind>>,
@@ -122,16 +122,12 @@ impl SemanticSnapshot {
             .graph
             .edges
             .iter()
-            .map(|(&(subject, relation, target), &weight)| SemanticEdge {
-                subject,
-                relation,
-                target,
-                weight,
-            })
+            .copied()
+            .map(SemanticEdge::from)
             .collect::<Vec<_>>();
         edges.sort_unstable_by_key(|edge| (edge.subject, edge.relation, edge.target));
 
-        let mut edge_weight_by_triple = HashMap::with_capacity(edges.len());
+        let mut edge_triples = HashSet::with_capacity(edges.len());
         let mut outgoing_all: HashMap<Kind, Vec<Kind>> = HashMap::with_capacity(kinds.len());
         let mut incoming_all: HashMap<Kind, Vec<Kind>> = HashMap::with_capacity(kinds.len());
         let mut outgoing_by_relation: HashMap<(Kind, Kind), Vec<Kind>> =
@@ -140,7 +136,7 @@ impl SemanticSnapshot {
             HashMap::with_capacity(edges.len());
 
         for edge in &edges {
-            edge_weight_by_triple.insert((edge.subject, edge.relation, edge.target), edge.weight);
+            edge_triples.insert((edge.subject, edge.relation, edge.target));
             outgoing_all
                 .entry(edge.subject)
                 .or_default()
@@ -171,7 +167,7 @@ impl SemanticSnapshot {
             edge_query_cache: Arc::new(RwLock::new(HashMap::new())),
             traversal_query_cache: Arc::new(RwLock::new(HashMap::new())),
             edges,
-            edge_weight_by_triple,
+            edge_triples,
             outgoing_all,
             incoming_all,
             outgoing_by_relation,
@@ -227,8 +223,7 @@ impl SemanticSnapshot {
 
     /// Check whether an exact edge exists.
     pub fn has_edge(&self, subject: Kind, relation: Kind, target: Kind) -> bool {
-        self.edge_weight_by_triple
-            .contains_key(&(subject, relation, target))
+        self.edge_triples.contains(&(subject, relation, target))
     }
 
     /// Return all targets for a `subject -> relation` pair.

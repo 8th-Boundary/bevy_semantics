@@ -26,10 +26,12 @@ fn main() -> Result<(), SemanticError> {
     let registrations: &[KindRegistration] = ANIMAL_KINDS;
     registry.register_consts(registrations)?;
 
-    registry.add_edge(PREYS_ON, IS_A, RELATION)?;
-    registry.add_edge(WOLF, IS_A, CREATURE)?;
-    registry.add_edge(RABBIT, IS_A, CREATURE)?;
-    registry.add_edge(WOLF, PREYS_ON, RABBIT)?;
+    registry.add_edges([
+        (PREYS_ON, IS_A, RELATION),
+        (WOLF, IS_A, CREATURE),
+        (RABBIT, IS_A, CREATURE),
+        (WOLF, PREYS_ON, RABBIT),
+    ])?;
 
     let snapshot = registry.snapshot();
     assert_eq!(snapshot.name(CREATURE), Some("Creature"));

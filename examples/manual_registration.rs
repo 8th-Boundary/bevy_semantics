@@ -13,9 +13,11 @@ fn main() -> Result<(), SemanticError> {
     let preys_on = registry.register_kind("preys_on")?;
     let rabbit = registry.register_kind("Rabbit")?;
 
-    registry.add_edge(preys_on, core.is_a, core.relation)?;
-    registry.add_edge(wolf, core.is_a, creature)?;
-    registry.add_edge(wolf, preys_on, rabbit)?;
+    registry.add_edges([
+        (preys_on, core.is_a, core.relation),
+        (wolf, core.is_a, creature),
+        (wolf, preys_on, rabbit),
+    ])?;
 
     let snapshot = registry.snapshot();
     let prey = snapshot.targets(wolf, preys_on);

@@ -8,9 +8,8 @@ use bevy_platform::collections::{HashMap, HashSet};
 
 use crate::error::SemanticError;
 use crate::kind::Kind;
-use crate::query::SemanticCommand;
+use crate::query::{EdgeRegistration, SemanticCommand};
 use crate::snapshot::SemanticSnapshot;
-use crate::weight::Weight;
 use crate::KindRegistration;
 
 type SnapshotCache = Arc<RwLock<Option<(u64, Arc<SemanticSnapshot>)>>>;
@@ -69,7 +68,7 @@ impl KindMeta {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct GraphState {
-    pub(crate) edges: HashMap<(Kind, Kind, Kind), Option<Weight>>,
+    pub(crate) edges: HashSet<EdgeRegistration>,
 }
 
 /// Mutable source of truth for kinds and edge data.
@@ -285,7 +284,7 @@ impl SemanticRegistry {
 
         self.kinds[index].flags = self.kinds[index].flags.union(KindFlags::TOMBSTONED);
         self.tombstoned_count += 1;
-        self.graph.edges.retain(|key, _| {
+        self.graph.edges.retain(|key| {
             let (subject, relation, target) = *key;
             subject != kind && relation != kind && target != kind
         });
@@ -416,18 +415,23 @@ impl SemanticRegistry {
         let inverse_of = crate::core::INVERSE_OF;
         let negates = crate::core::NEGATES;
 
-        for kind in [
-            relation, is_a, not_a, can_be, cant_be, has_part, part_of, inverse_of, negates,
-        ] {
-            let _ = self.add_edge(kind, is_a, relation)?;
-        }
-
-        let _ = self.add_edge(has_part, inverse_of, part_of)?;
-        let _ = self.add_edge(part_of, inverse_of, has_part)?;
-        let _ = self.add_edge(is_a, negates, not_a)?;
-        let _ = self.add_edge(not_a, negates, is_a)?;
-        let _ = self.add_edge(can_be, negates, cant_be)?;
-        let _ = self.add_edge(cant_be, negates, can_be)?;
+        let _ = self.add_edges([
+            (relation, is_a, relation),
+            (is_a, is_a, relation),
+            (not_a, is_a, relation),
+            (can_be, is_a, relation),
+            (cant_be, is_a, relation),
+            (has_part, is_a, relation),
+            (part_of, is_a, relation),
+            (inverse_of, is_a, relation),
+            (negates, is_a, relation),
+            (has_part, inverse_of, part_of),
+            (part_of, inverse_of, has_part),
+            (is_a, negates, not_a),
+            (not_a, negates, is_a),
+            (can_be, negates, cant_be),
+            (cant_be, negates, can_be),
+        ])?;
 
         let core = Core {
             relation,
@@ -494,25 +498,37 @@ impl SemanticRegistry {
         }
     }
 
-    /// Insert or update an unweighted semantic edge.
+    /// Insert a semantic edge.
     pub fn add_edge(
         &mut self,
         subject: Kind,
         relation: Kind,
         target: Kind,
     ) -> Result<bool, SemanticError> {
-        self.upsert_edge(subject, relation, target, None)
+        self.validate_edge(subject, relation, target)?;
+        Ok(self.insert_validated_edge((subject, relation, target)))
     }
 
-    /// Insert or update a weighted semantic edge.
-    pub fn add_edge_weighted(
+    /// Insert semantic edges transactionally from tuple records.
+    ///
+    /// All referenced kinds are validated before the graph is mutated.
+    pub fn add_edges(
         &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: Weight,
+        edges: impl AsRef<[EdgeRegistration]>,
     ) -> Result<bool, SemanticError> {
-        self.upsert_edge(subject, relation, target, Some(weight))
+        let edges = edges.as_ref();
+        for &(subject, relation, target) in edges {
+            self.validate_edge(subject, relation, target)?;
+        }
+
+        let mut changed = false;
+        for &edge in edges {
+            changed |= self.graph.edges.insert(edge);
+        }
+        if changed {
+            self.bump_version();
+        }
+        Ok(changed)
     }
 
     /// Unregister a kind and remove any incident edges and type bindings.
@@ -551,7 +567,7 @@ impl SemanticRegistry {
         }
         debug_assert_eq!(removed_meta.kind, kind);
 
-        self.graph.edges.retain(|key, _| {
+        self.graph.edges.retain(|key| {
             let (subject, relation, target) = *key;
             subject != kind && relation != kind && target != kind
         });
@@ -618,7 +634,7 @@ impl SemanticRegistry {
             }
         }
 
-        self.graph.edges.retain(|key, _| {
+        self.graph.edges.retain(|key| {
             let (subject, relation, target) = *key;
             !removed_set.contains(&subject)
                 && !removed_set.contains(&relation)
@@ -641,7 +657,7 @@ impl SemanticRegistry {
         self.ensure_known_kind(target)?;
 
         let key = (subject, relation, target);
-        if self.graph.edges.remove(&key).is_some() {
+        if self.graph.edges.remove(&key) {
             self.bump_version();
             Ok(true)
         } else {
@@ -651,7 +667,7 @@ impl SemanticRegistry {
 
     /// Check whether an exact semantic edge exists.
     pub fn has_edge(&self, subject: Kind, relation: Kind, target: Kind) -> bool {
-        self.graph.edges.contains_key(&(subject, relation, target))
+        self.graph.edges.contains(&(subject, relation, target))
     }
 
     /// Apply a single semantic command immediately.
@@ -675,11 +691,8 @@ impl SemanticRegistry {
                 subject,
                 relation,
                 target,
-                weight,
-            } => match weight {
-                Some(weight) => self.add_edge_weighted(subject, relation, target, weight),
-                None => self.add_edge(subject, relation, target),
-            },
+            } => self.add_edge(subject, relation, target),
+            SemanticCommand::AddEdges { edges } => self.add_edges(edges),
             SemanticCommand::UnregisterNamespace { namespace } => {
                 self.unregister_namespace(namespace.as_ref())
             }
@@ -898,30 +911,23 @@ impl SemanticRegistry {
         Ok(canonical)
     }
 
-    fn upsert_edge(
-        &mut self,
+    fn validate_edge(
+        &self,
         subject: Kind,
         relation: Kind,
         target: Kind,
-        weight: Option<Weight>,
-    ) -> Result<bool, SemanticError> {
+    ) -> Result<(), SemanticError> {
         self.ensure_active_kind(subject)?;
         self.ensure_active_kind(relation)?;
-        self.ensure_active_kind(target)?;
+        self.ensure_active_kind(target)
+    }
 
-        let key = (subject, relation, target);
-        match self.graph.edges.get_mut(&key) {
-            Some(existing) if *existing == weight => Ok(false),
-            Some(existing) => {
-                *existing = weight;
-                self.bump_version();
-                Ok(true)
-            }
-            None => {
-                self.graph.edges.insert(key, weight);
-                self.bump_version();
-                Ok(true)
-            }
+    fn insert_validated_edge(&mut self, edge: EdgeRegistration) -> bool {
+        if self.graph.edges.insert(edge) {
+            self.bump_version();
+            true
+        } else {
+            false
         }
     }
 
@@ -1076,17 +1082,12 @@ impl<'a> SemanticRegistryBatch<'a> {
         Ok(changed)
     }
 
-    pub fn add_edge_weighted(
+    pub fn add_edges(
         &mut self,
-        subject: Kind,
-        relation: Kind,
-        target: Kind,
-        weight: Weight,
+        edges: impl AsRef<[EdgeRegistration]>,
     ) -> Result<bool, SemanticError> {
         let before = self.registry.version();
-        let changed = self
-            .registry
-            .add_edge_weighted(subject, relation, target, weight)?;
+        let changed = self.registry.add_edges(edges)?;
         self.changed |= changed || self.registry.version() != before;
         Ok(changed)
     }

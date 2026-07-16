@@ -5,7 +5,7 @@ use bevy_ecs::world::World;
 use bevy_semantics::core::{CAN_BE, IS_A};
 use bevy_semantics::{
     semantic_kinds, Kind, SemanticCommand, SemanticComponent, SemanticComponents,
-    SemanticPlaybackQueue, SemanticRegistry, SemanticWorldExt, Weight,
+    SemanticPlaybackQueue, SemanticRegistry, SemanticWorldExt,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
@@ -62,11 +62,11 @@ fn populate_registry(registry: &mut SemanticRegistry) -> (Kind, Kind, Kind, Kind
             .expect("chain edge");
     }
 
-    for index in (0..NODE_COUNT).step_by(LINK_STRIDE) {
-        batch
-            .add_edge_weighted(root, linked_to, nodes[index], Weight::from(index as i64))
-            .expect("linked edge");
-    }
+    let linked_edges = (0..NODE_COUNT)
+        .step_by(LINK_STRIDE)
+        .map(|index| (root, linked_to, nodes[index]))
+        .collect::<Vec<_>>();
+    batch.add_edges(&linked_edges).expect("linked edges");
 
     (IS_A, root, linked_to, playable, nodes)
 }
@@ -78,21 +78,18 @@ fn derive_task_commands(
     target: Kind,
 ) -> Vec<SemanticCommand> {
     let descendants = snapshot
-        .edge_query()
+        .traversal_query()
+        .seed(root)
         .relation(IS_A)
-        .target(root)
-        .run_subjects(snapshot)
+        .transitive()
+        .run_kinds(snapshot)
         .expect("descendants");
 
-    descendants
+    let edges = descendants
         .into_iter()
-        .map(|subject| SemanticCommand::AddEdge {
-            subject,
-            relation,
-            target,
-            weight: None,
-        })
-        .collect()
+        .map(|subject| (subject, relation, target))
+        .collect();
+    vec![SemanticCommand::AddEdges { edges }]
 }
 
 fn build_fixture() -> Fixture {

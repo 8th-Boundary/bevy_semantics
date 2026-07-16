@@ -12,6 +12,7 @@ All notable changes to `bevy_semantics` will be documented in this file.
 - Added compile-time constants for every seeded kind under `bevy_semantics::core`.
 - Added world-local, bidirectional `Kind`/`ComponentId` registration through `SemanticWorldExt` and `SemanticAppExt`.
 - Added identity pinning and explicit tombstone/revival for static component kinds.
+- Simplified semantic edges to payload-free triples and added transactional tuple-based `add_edges` registration.
 
 ## 0.1.0
 

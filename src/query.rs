@@ -10,7 +10,6 @@ use crate::direction::EdgeDirection;
 use crate::error::SemanticError;
 use crate::kind::Kind;
 use crate::snapshot::{SemanticSnapshot, TraversalParams};
-use crate::weight::Weight;
 
 type EdgeQueryCacheEntry = Option<(u64, Arc<CompiledEdgeQuery>)>;
 type TraversalQueryCacheEntry = Option<(u64, Arc<CompiledTraversalQuery>)>;
@@ -23,29 +22,26 @@ pub struct SemanticEdge {
     pub subject: Kind,
     pub relation: Kind,
     pub target: Kind,
-    pub weight: Option<Weight>,
 }
+
+/// Tuple form accepted by bulk edge-registration APIs.
+pub type EdgeRegistration = (Kind, Kind, Kind);
 
 impl SemanticEdge {
     #[inline]
-    /// Construct an unweighted semantic edge record.
+    /// Construct a semantic edge record.
     pub const fn new(subject: Kind, relation: Kind, target: Kind) -> Self {
         Self {
             subject,
             relation,
             target,
-            weight: None,
         }
     }
+}
 
-    /// Construct a weighted semantic edge record.
-    pub const fn weighted(subject: Kind, relation: Kind, target: Kind, weight: Weight) -> Self {
-        Self {
-            subject,
-            relation,
-            target,
-            weight: Some(weight),
-        }
+impl From<EdgeRegistration> for SemanticEdge {
+    fn from((subject, relation, target): EdgeRegistration) -> Self {
+        Self::new(subject, relation, target)
     }
 }
 
@@ -75,7 +71,9 @@ pub enum SemanticCommand {
         subject: Kind,
         relation: Kind,
         target: Kind,
-        weight: Option<Weight>,
+    },
+    AddEdges {
+        edges: Vec<EdgeRegistration>,
     },
     RemoveEdge {
         subject: Kind,
@@ -101,25 +99,6 @@ enum DepthSpec {
     Transitive,
 }
 
-/// Weight filter used by edge queries.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum WeightPredicate {
-    #[default]
-    Any,
-    Missing,
-    Present,
-    Eq(Weight),
-    Ne(Weight),
-    Gt(Weight),
-    Gte(Weight),
-    Lt(Weight),
-    Lte(Weight),
-    Range {
-        min: Weight,
-        max: Weight,
-    },
-}
-
 /// Declarative edge query definition.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EdgeQuery {
@@ -127,7 +106,6 @@ pub struct EdgeQuery {
     relations: Vec<Kind>,
     targets: Vec<Kind>,
     direction: EdgeDirection,
-    weight: WeightPredicate,
     selection: EdgeSelection,
 }
 
@@ -138,7 +116,6 @@ impl Default for EdgeQuery {
             relations: Vec::new(),
             targets: Vec::new(),
             direction: EdgeDirection::Outgoing,
-            weight: WeightPredicate::Any,
             selection: EdgeSelection::Edges,
         }
     }
@@ -360,68 +337,6 @@ impl EdgeQueryBuilder {
 
     pub fn both(mut self) -> Self {
         self.query.direction = EdgeDirection::Both;
-        self.refresh_fingerprint();
-        self
-    }
-
-    pub fn weight_any(mut self) -> Self {
-        self.query.weight = WeightPredicate::Any;
-        self.refresh_fingerprint();
-        self
-    }
-
-    /// Match only edges without a weight.
-    pub fn weight_missing(mut self) -> Self {
-        self.query.weight = WeightPredicate::Missing;
-        self.refresh_fingerprint();
-        self
-    }
-
-    /// Match only edges with any weight.
-    pub fn weight_present(mut self) -> Self {
-        self.query.weight = WeightPredicate::Present;
-        self.refresh_fingerprint();
-        self
-    }
-
-    pub fn weight_eq(mut self, weight: Weight) -> Self {
-        self.query.weight = WeightPredicate::Eq(weight);
-        self.refresh_fingerprint();
-        self
-    }
-
-    pub fn weight_ne(mut self, weight: Weight) -> Self {
-        self.query.weight = WeightPredicate::Ne(weight);
-        self.refresh_fingerprint();
-        self
-    }
-
-    pub fn weight_gt(mut self, weight: Weight) -> Self {
-        self.query.weight = WeightPredicate::Gt(weight);
-        self.refresh_fingerprint();
-        self
-    }
-
-    pub fn weight_gte(mut self, weight: Weight) -> Self {
-        self.query.weight = WeightPredicate::Gte(weight);
-        self.refresh_fingerprint();
-        self
-    }
-
-    pub fn weight_lt(mut self, weight: Weight) -> Self {
-        self.query.weight = WeightPredicate::Lt(weight);
-        self.refresh_fingerprint();
-        self
-    }
-
-    pub fn weight_lte(mut self, weight: Weight) -> Self {
-        self.query.weight = WeightPredicate::Lte(weight);
-        self.refresh_fingerprint();
-        self
-    }
-
-    pub fn weight_range(mut self, min: Weight, max: Weight) -> Self {
-        self.query.weight = WeightPredicate::Range { min, max };
         self.refresh_fingerprint();
         self
     }
@@ -994,11 +909,6 @@ fn normalize_edge_query(mut query: EdgeQuery) -> EdgeQuery {
     normalize_kind_list(&mut query.subjects);
     normalize_kind_list(&mut query.relations);
     normalize_kind_list(&mut query.targets);
-    if let WeightPredicate::Range { min, max } = query.weight {
-        if max < min {
-            query.weight = WeightPredicate::Range { min: max, max: min };
-        }
-    }
     query
 }
 
@@ -1154,10 +1064,6 @@ fn edge_matches(
         return false;
     }
 
-    if !matches!(query.weight, WeightPredicate::Any) && !weight_matches(edge.weight, query.weight) {
-        return false;
-    }
-
     match query.direction {
         EdgeDirection::Outgoing => {
             kind_matches(subject_filter, edge.subject) && kind_matches(target_filter, edge.target)
@@ -1177,22 +1083,5 @@ fn kind_matches(filter: Option<&[Kind]>, value: Kind) -> bool {
     match filter {
         None => true,
         Some(values) => values.contains(&value),
-    }
-}
-
-fn weight_matches(weight: Option<Weight>, predicate: WeightPredicate) -> bool {
-    match predicate {
-        WeightPredicate::Any => true,
-        WeightPredicate::Missing => weight.is_none(),
-        WeightPredicate::Present => weight.is_some(),
-        WeightPredicate::Eq(other) => weight == Some(other),
-        WeightPredicate::Ne(other) => weight.is_some_and(|weight| weight != other),
-        WeightPredicate::Gt(other) => weight.is_some_and(|weight| weight > other),
-        WeightPredicate::Gte(other) => weight.is_some_and(|weight| weight >= other),
-        WeightPredicate::Lt(other) => weight.is_some_and(|weight| weight < other),
-        WeightPredicate::Lte(other) => weight.is_some_and(|weight| weight <= other),
-        WeightPredicate::Range { min, max } => {
-            weight.is_some_and(|weight| weight >= min && weight <= max)
-        }
     }
 }
