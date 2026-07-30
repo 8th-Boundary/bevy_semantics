@@ -43,8 +43,9 @@ impl KindFlags {
     const CORE: Self = Self(1 << 0);
     const TYPED: Self = Self(1 << 1);
     const USER_DEFINED: Self = Self(1 << 2);
-    const STATIC_COMPONENT: Self = Self(1 << 3);
-    const TOMBSTONED: Self = Self(1 << 4);
+    const STATIC_TYPE: Self = Self(1 << 3);
+    const STATIC_COMPONENT: Self = Self(1 << 4);
+    const TOMBSTONED: Self = Self(1 << 5);
 
     fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
@@ -256,6 +257,17 @@ impl SemanticRegistry {
         self.register_canonical_kind(canonical, Some(type_id), KindFlags::TYPED, true)
     }
 
+    /// Validate and register a type's declared static semantic identity.
+    ///
+    /// Static type identities are pinned for the registry's lifetime. They may
+    /// be tombstoned, but cannot be unregistered or rebound.
+    pub fn register_semantic_type<T>(&mut self) -> Result<Kind, SemanticError>
+    where
+        T: crate::SemanticType,
+    {
+        self.bind_static_type::<T>(T::KIND_NAME, T::KIND)
+    }
+
     fn register_core_kind(&mut self, name: impl AsRef<str>) -> Result<Kind, SemanticError> {
         let canonical = canonicalize_name(name.as_ref())?;
         self.register_canonical_kind(canonical, None, KindFlags::CORE, false)
@@ -339,11 +351,39 @@ impl SemanticRegistry {
         Ok(true)
     }
 
+    pub(crate) fn bind_static_type<T>(
+        &mut self,
+        name: &'static str,
+        declared: Kind,
+    ) -> Result<Kind, SemanticError>
+    where
+        T: 'static,
+    {
+        self.bind_static_type_with_flags::<T>(name, declared, KindFlags::STATIC_TYPE)
+    }
+
     pub(crate) fn bind_static_component<T>(
         &mut self,
         name: &'static str,
         declared: Kind,
     ) -> Result<(), SemanticError>
+    where
+        T: 'static,
+    {
+        self.bind_static_type_with_flags::<T>(
+            name,
+            declared,
+            KindFlags::STATIC_TYPE.union(KindFlags::STATIC_COMPONENT),
+        )?;
+        Ok(())
+    }
+
+    fn bind_static_type_with_flags<T>(
+        &mut self,
+        name: &'static str,
+        declared: Kind,
+        flags: KindFlags,
+    ) -> Result<Kind, SemanticError>
     where
         T: 'static,
     {
@@ -377,7 +417,7 @@ impl SemanticRegistry {
         let registered = self.register_canonical_kind(
             canonical,
             Some(type_id),
-            KindFlags::TYPED.union(KindFlags::STATIC_COMPONENT),
+            KindFlags::TYPED.union(flags),
             false,
         )?;
         if registered != declared {
@@ -388,7 +428,7 @@ impl SemanticRegistry {
                 generated: registered,
             });
         }
-        Ok(())
+        Ok(registered)
     }
 
     pub(crate) fn has_static_component_binding<T>(&self, name: &str, kind: Kind) -> bool
@@ -580,6 +620,12 @@ impl SemanticRegistry {
                 name: meta.name.to_string(),
             });
         }
+        if meta.flags.contains(KindFlags::STATIC_TYPE) {
+            return Err(SemanticError::CannotUnregisterStaticTypeKind {
+                kind,
+                name: meta.name.to_string(),
+            });
+        }
 
         if let Some(type_id) = meta.type_id {
             self.kind_to_type.remove(&kind);
@@ -631,6 +677,12 @@ impl SemanticRegistry {
                 }
                 if meta.flags.contains(KindFlags::STATIC_COMPONENT) {
                     return Err(SemanticError::CannotUnregisterStaticComponentKind {
+                        kind: meta.kind,
+                        name: meta.name.to_string(),
+                    });
+                }
+                if meta.flags.contains(KindFlags::STATIC_TYPE) {
+                    return Err(SemanticError::CannotUnregisterStaticTypeKind {
                         kind: meta.kind,
                         name: meta.name.to_string(),
                     });

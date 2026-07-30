@@ -12,7 +12,7 @@ use crate::query::SemanticCommand;
 use crate::registry::{canonicalize_name, hash_canonical_name};
 use crate::{
     EdgeRegistration, Kind, KindRegistration, SemanticComponents, SemanticError, SemanticRegistry,
-    SemanticSnapshot,
+    SemanticSnapshot, SemanticType,
 };
 
 /// Bevy resource that owns semantic authoring state and the cached read model.
@@ -75,6 +75,14 @@ impl Semantics {
         T: 'static,
     {
         self.0.typed_kind_named::<T>(name)
+    }
+
+    /// Validate and register a type's declared static semantic identity.
+    pub fn register_semantic_type<T>(&mut self) -> Result<Kind, SemanticError>
+    where
+        T: SemanticType,
+    {
+        self.0.register_semantic_type::<T>()
     }
 
     /// Unregister a kind immediately.

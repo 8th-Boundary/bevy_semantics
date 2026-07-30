@@ -9,17 +9,14 @@ use bevy_platform::collections::HashMap;
 
 use crate::plugin::Semantics;
 use crate::registry::hash_canonical_name;
-use crate::{Kind, SemanticError};
+use crate::{Kind, SemanticError, SemanticType};
 
-/// A Bevy component with an explicit, stable semantic identity.
+/// A [`SemanticType`] that is also stored as a Bevy component.
 ///
-/// `KIND_NAME` is the canonical semantic name and `KIND` must equal
-/// `kind!(KIND_NAME)`. Implementations should normally be generated with
-/// `#[derive(SemanticComponent)]` or [`crate::semantic_component!`].
-pub trait SemanticComponent: Component {
-    const KIND: Kind;
-    const KIND_NAME: &'static str;
-}
+/// Implementations should normally be generated with
+/// `#[derive(SemanticComponent)]` or [`crate::semantic_component!`]. Both
+/// authoring paths also implement [`SemanticType`].
+pub trait SemanticComponent: Component + SemanticType {}
 
 /// World-local bindings between stable semantic kinds and Bevy component IDs.
 ///
@@ -99,12 +96,25 @@ impl SemanticComponents {
 
 /// Fallible semantic component registration directly on a Bevy world.
 pub trait SemanticWorldExt {
+    fn try_register_semantic_type<T>(&mut self) -> Result<Kind, SemanticError>
+    where
+        T: SemanticType;
+
     fn try_register_semantic_component<T>(&mut self) -> Result<ComponentId, SemanticError>
     where
         T: SemanticComponent;
 }
 
 impl SemanticWorldExt for World {
+    fn try_register_semantic_type<T>(&mut self) -> Result<Kind, SemanticError>
+    where
+        T: SemanticType,
+    {
+        self.init_resource::<Semantics>();
+        self.resource_mut::<Semantics>()
+            .register_semantic_type::<T>()
+    }
+
     fn try_register_semantic_component<T>(&mut self) -> Result<ComponentId, SemanticError>
     where
         T: SemanticComponent,
@@ -153,12 +163,31 @@ impl SemanticWorldExt for World {
 
 /// Infallible application-builder registration for prewarming component bindings.
 pub trait SemanticAppExt {
+    fn register_semantic_type<T>(&mut self) -> &mut Self
+    where
+        T: SemanticType;
+
     fn register_semantic_component<T>(&mut self) -> &mut Self
     where
         T: SemanticComponent;
 }
 
 impl SemanticAppExt for App {
+    fn register_semantic_type<T>(&mut self) -> &mut Self
+    where
+        T: SemanticType,
+    {
+        self.world_mut()
+            .try_register_semantic_type::<T>()
+            .unwrap_or_else(|error| {
+                panic!(
+                    "failed to register semantic type {}: {error}",
+                    type_name::<T>()
+                )
+            });
+        self
+    }
+
     fn register_semantic_component<T>(&mut self) -> &mut Self
     where
         T: SemanticComponent,

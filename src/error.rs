@@ -23,6 +23,10 @@ pub enum SemanticError {
         kind: Kind,
         name: String,
     },
+    CannotUnregisterStaticTypeKind {
+        kind: Kind,
+        name: String,
+    },
     TombstonedKind {
         kind: Kind,
     },
@@ -95,6 +99,10 @@ impl std::fmt::Display for SemanticError {
             SemanticError::CannotUnregisterStaticComponentKind { kind, name } => write!(
                 f,
                 "cannot unregister static component kind '{name}' ({kind}); tombstone it instead"
+            ),
+            SemanticError::CannotUnregisterStaticTypeKind { kind, name } => write!(
+                f,
+                "cannot unregister static type kind '{name}' ({kind}); tombstone it instead"
             ),
             SemanticError::TombstonedKind { kind } => {
                 write!(f, "kind '{kind}' is tombstoned")

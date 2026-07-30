@@ -18,7 +18,16 @@ pub fn __kind_raw(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(SemanticComponent, attributes(semantic))]
 pub fn derive_semantic_component(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    match expand_derive(&input) {
+    match expand_component_derive(&input) {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.to_compile_error().into(),
+    }
+}
+
+#[proc_macro_derive(SemanticType, attributes(semantic))]
+pub fn derive_semantic_type(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match expand_type_derive(&input) {
         Ok(tokens) => tokens.into(),
         Err(error) => error.to_compile_error().into(),
     }
@@ -28,14 +37,25 @@ pub fn derive_semantic_component(input: TokenStream) -> TokenStream {
 /// instantiation of a generic component type.
 #[proc_macro]
 pub fn semantic_component(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ConcreteSemanticComponent);
-    match expand_concrete(input) {
+    let input = parse_macro_input!(input as ConcreteSemanticType);
+    match expand_concrete_component(input) {
         Ok(tokens) => tokens.into(),
         Err(error) => error.to_compile_error().into(),
     }
 }
 
-fn expand_derive(input: &DeriveInput) -> Result<proc_macro2::TokenStream> {
+/// Implement `SemanticType` for a concrete type, including a concrete
+/// instantiation of a generic type.
+#[proc_macro]
+pub fn semantic_type(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as ConcreteSemanticType);
+    match expand_concrete_type(input) {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.to_compile_error().into(),
+    }
+}
+
+fn expand_component_derive(input: &DeriveInput) -> Result<proc_macro2::TokenStream> {
     if !input.generics.params.is_empty() {
         return Err(Error::new_spanned(
             &input.generics,
@@ -50,19 +70,43 @@ fn expand_derive(input: &DeriveInput) -> Result<proc_macro2::TokenStream> {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     Ok(quote! {
-        impl #impl_generics #crate_path::SemanticComponent for #ident #ty_generics #where_clause {
+        impl #impl_generics #crate_path::SemanticType for #ident #ty_generics #where_clause {
+            const KIND: #crate_path::Kind = #crate_path::kind!(#name);
+            const KIND_NAME: &'static str = #name;
+        }
+
+        impl #impl_generics #crate_path::SemanticComponent for #ident #ty_generics #where_clause {}
+    })
+}
+
+fn expand_type_derive(input: &DeriveInput) -> Result<proc_macro2::TokenStream> {
+    if !input.generics.params.is_empty() {
+        return Err(Error::new_spanned(
+            &input.generics,
+            "generic semantic types require an explicit concrete implementation; use `semantic_type!(Container<Concrete>, kind = \"Container<Concrete>\")`",
+        ));
+    }
+
+    let crate_path = semantics_crate_path(input.ident.span())?;
+    let name = parse_semantic_name(&input.attrs, input.ident.span())?;
+    let ident = &input.ident;
+    let generics = input.generics.clone();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    Ok(quote! {
+        impl #impl_generics #crate_path::SemanticType for #ident #ty_generics #where_clause {
             const KIND: #crate_path::Kind = #crate_path::kind!(#name);
             const KIND_NAME: &'static str = #name;
         }
     })
 }
 
-struct ConcreteSemanticComponent {
+struct ConcreteSemanticType {
     ty: Type,
     name: LitStr,
 }
 
-impl Parse for ConcreteSemanticComponent {
+impl Parse for ConcreteSemanticType {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let ty = input.parse()?;
         input.parse::<Token![,]>()?;
@@ -83,14 +127,32 @@ impl Parse for ConcreteSemanticComponent {
     }
 }
 
-fn expand_concrete(input: ConcreteSemanticComponent) -> Result<proc_macro2::TokenStream> {
+fn concrete_parts(input: ConcreteSemanticType) -> Result<(proc_macro2::TokenStream, Type, LitStr)> {
     let crate_path = semantics_crate_path(input.name.span())?;
     let (canonical, _) = canonical_kind(&input.name)?;
     let name = LitStr::new(&canonical, input.name.span());
     let ty = input.ty;
+    Ok((crate_path, ty, name))
+}
+
+fn expand_concrete_component(input: ConcreteSemanticType) -> Result<proc_macro2::TokenStream> {
+    let (crate_path, ty, name) = concrete_parts(input)?;
 
     Ok(quote! {
-        impl #crate_path::SemanticComponent for #ty {
+        impl #crate_path::SemanticType for #ty {
+            const KIND: #crate_path::Kind = #crate_path::kind!(#name);
+            const KIND_NAME: &'static str = #name;
+        }
+
+        impl #crate_path::SemanticComponent for #ty {}
+    })
+}
+
+fn expand_concrete_type(input: ConcreteSemanticType) -> Result<proc_macro2::TokenStream> {
+    let (crate_path, ty, name) = concrete_parts(input)?;
+
+    Ok(quote! {
+        impl #crate_path::SemanticType for #ty {
             const KIND: #crate_path::Kind = #crate_path::kind!(#name);
             const KIND_NAME: &'static str = #name;
         }

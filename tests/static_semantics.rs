@@ -6,9 +6,9 @@ use bevy_semantics::core::{
     CANT_BE, CAN_BE, HAS_PART, INVERSE_OF, IS_A, NAMESPACE, NEGATES, NOT_A, PART_OF, RELATION,
 };
 use bevy_semantics::{
-    kind, semantic_component, semantic_kinds, Kind, SemanticAppExt, SemanticComponent,
-    SemanticComponents, SemanticError, SemanticRegistry, SemanticWorldExt, Semantics,
-    SemanticsPlugin,
+    kind, semantic_component, semantic_kinds, semantic_type, Kind, SemanticAppExt,
+    SemanticComponent, SemanticComponents, SemanticError, SemanticRegistry, SemanticType,
+    SemanticWorldExt, Semantics, SemanticsPlugin,
 };
 
 const MOVE_TO: Kind = kind!("MoveTo");
@@ -31,27 +31,39 @@ struct Health;
 #[semantic(kind = "Standalone", standalone)]
 struct Standalone;
 
+#[derive(SemanticType)]
+#[semantic(kind = "KnownFoodSource")]
+struct KnownFoodSource;
+
 #[derive(Component)]
 struct Container<T>(T);
 
 semantic_component!(Container<u32>, kind = "Container<u32>");
 semantic_component!(Container<String>, kind = "Container<String>");
 
+struct DatumContainer<T>(T);
+
+semantic_type!(DatumContainer<u32>, kind = "DatumContainer<u32>");
+
 #[derive(Component)]
 struct ConflictingHealth;
 
-impl SemanticComponent for ConflictingHealth {
+impl SemanticType for ConflictingHealth {
     const KIND: Kind = Health::KIND;
     const KIND_NAME: &'static str = Health::KIND_NAME;
 }
 
+impl SemanticComponent for ConflictingHealth {}
+
 #[derive(Component)]
 struct InvalidStaticKind;
 
-impl SemanticComponent for InvalidStaticKind {
+impl SemanticType for InvalidStaticKind {
     const KIND: Kind = kind!("NotInvalidStaticKind");
     const KIND_NAME: &'static str = "InvalidStaticKind";
 }
+
+impl SemanticComponent for InvalidStaticKind {}
 
 #[test]
 fn kind_macro_is_const_and_matches_runtime_protocol() -> Result<(), SemanticError> {
@@ -154,6 +166,51 @@ fn derive_and_concrete_generic_macro_expose_static_identity() {
     assert_eq!(Container::<u32>::KIND, kind!("Container<u32>"));
     assert_ne!(Container::<u32>::KIND, Container::<String>::KIND);
     assert_eq!(Standalone::KIND, kind!("Standalone"));
+    assert_eq!(KnownFoodSource::KIND, kind!("KnownFoodSource"));
+    assert_eq!(DatumContainer::<u32>::KIND, kind!("DatumContainer<u32>"));
+}
+
+#[test]
+fn semantic_types_register_without_bevy_component_storage() {
+    let mut registry = SemanticRegistry::default();
+    assert_eq!(
+        registry
+            .register_semantic_type::<KnownFoodSource>()
+            .expect("static type registration"),
+        KnownFoodSource::KIND
+    );
+    assert_eq!(
+        registry.kind_of::<KnownFoodSource>(),
+        Some(KnownFoodSource::KIND)
+    );
+    assert_eq!(
+        registry.type_id(KnownFoodSource::KIND),
+        Some(TypeId::of::<KnownFoodSource>())
+    );
+
+    let error = registry
+        .unregister_kind(KnownFoodSource::KIND)
+        .expect_err("static type identity must remain pinned");
+    assert!(matches!(
+        error,
+        SemanticError::CannotUnregisterStaticTypeKind { .. }
+    ));
+}
+
+#[test]
+fn app_and_world_can_prewarm_semantic_types() {
+    let mut app = App::new();
+    app.register_semantic_type::<KnownFoodSource>()
+        .register_semantic_type::<KnownFoodSource>();
+
+    assert!(app.world().contains_resource::<Semantics>());
+    assert!(!app.world().contains_resource::<SemanticComponents>());
+    assert_eq!(
+        app.world()
+            .resource::<Semantics>()
+            .kind_of::<KnownFoodSource>(),
+        Ok(KnownFoodSource::KIND)
+    );
 }
 
 #[test]

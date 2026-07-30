@@ -147,12 +147,27 @@ Implementation may keep separate internal dense remap tables.
 
 Flags should at minimum distinguish core, typed, and user-defined kinds.
 
-### 3.1 Static Component Identity
+### 3.1 Static Type Identity
+
+`SemanticType` binds any `Send + Sync + 'static` Rust type to an explicit
+canonical name and compile-time `Kind`. The identity exists without a registry
+and does not imply Bevy component storage. Non-generic types normally derive
+the implementation with `#[derive(SemanticType)]` and
+`#[semantic(kind = "Name")]`.
+
+Each concrete monomorphization of an open generic type requires an explicit
+identity through `semantic_type!(ConcreteType, kind = "Name")`.
+
+Registration validates the declared name and `Kind`, establishes a one-to-one
+`TypeId`/`Kind` binding, and pins the identity against unregistration. Static
+type kinds may be tombstoned without losing their name or Rust type binding.
+
+### 3.2 Static Component Identity
 
 `SemanticComponent` binds a Bevy component type to an explicit canonical name
-and compile-time `Kind`. The static identity exists without a registry. A
-non-generic type normally derives the implementation with
-`#[semantic(kind = "Name")]`.
+and compile-time `Kind`. It is the component-specific refinement of
+`SemanticType`. A non-generic type normally derives both implementations with
+`#[derive(SemanticComponent)]` and `#[semantic(kind = "Name")]`.
 
 Each concrete monomorphization of an open generic component has a distinct
 `TypeId` and Bevy `ComponentId`; therefore it must also declare a distinct
@@ -175,6 +190,7 @@ Rules:
 
 Direct registry API:
 - `register_kind(name) -> Result<Kind, SemanticError>`
+- `register_semantic_type::<T>() -> Result<Kind, SemanticError>`
 - `typed_kind::<T>() -> Result<Kind, SemanticError>`
 - `typed_kind_named::<T>(name) -> Result<Kind, SemanticError>`
 - `unregister_kind(kind) -> Result<bool, SemanticError>`

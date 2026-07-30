@@ -5,7 +5,7 @@ use bevy_ecs::world::World;
 use bevy_semantics::core::{CAN_BE, IS_A};
 use bevy_semantics::{
     cartesian_edges, semantic_kinds, Kind, SemanticCommand, SemanticComponent, SemanticComponents,
-    SemanticPlaybackQueue, SemanticRegistry, SemanticWorldExt,
+    SemanticPlaybackQueue, SemanticRegistry, SemanticType, SemanticWorldExt,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 

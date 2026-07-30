@@ -31,6 +31,7 @@ tracked explicitly rather than encoded in the crate's version number.
 
 - stable semantic identities
 - optional typed kinds
+- compile-time identity for component and non-component Rust types
 - a read-optimized ontology graph
 - immutable snapshots for concurrent reads
 - query compilation and caching
@@ -101,13 +102,44 @@ fn register_creature(registry: &mut SemanticRegistry) -> Result<Kind, SemanticEr
 }
 ```
 
+### Semantic Types
+
+A semantic type binds any Rust type to an explicit stable `Kind`, without
+requiring ECS storage:
+
+```rust
+use bevy_semantics::SemanticType;
+
+#[derive(SemanticType)]
+#[semantic(kind = "KnownFoodSource")]
+struct KnownFoodSource {
+    location: [f32; 3],
+}
+```
+
+`KnownFoodSource::KIND` identifies the concept, while `TypeId` still identifies
+the exact Rust type in the current process. The static identity can be
+validated and registered through `SemanticRegistry`, `SemanticWorldExt`, or
+`SemanticAppExt`.
+
+Open generic definitions require an explicit identity for each concrete
+monomorphization:
+
+```rust
+use bevy_semantics::semantic_type;
+
+struct Memories<T>(Vec<T>);
+
+semantic_type!(Memories<KnownFoodSource>, kind = "KnownFoodSourceMemories");
+```
+
 ### Semantic Components
 
-A semantic component binds a Bevy component type to a static `Kind`:
+A semantic component is the component-specific refinement of `SemanticType`:
 
 ```rust
 use bevy_ecs::prelude::Component;
-use bevy_semantics::SemanticComponent;
+use bevy_semantics::{SemanticComponent, SemanticType};
 
 #[derive(Component, SemanticComponent)]
 #[semantic(kind = "Health")]
@@ -116,8 +148,9 @@ struct Health {
 }
 ```
 
-`Health::KIND` and `Health::KIND_NAME` are available without a registry or
-world. Installing `SemanticsPlugin` creates the world-local mapping resource,
+The derive implements both `SemanticType` and the empty `SemanticComponent`
+marker. `Health::KIND` and `Health::KIND_NAME` are available without a registry
+or world. Installing `SemanticsPlugin` creates the world-local mapping resource,
 and explicit registration can prewarm the binding:
 
 ```rust
@@ -150,7 +183,9 @@ semantic_component!(Container<String>, kind = "Container<String>");
 This keeps `Container<u32>` and `Container<String>` one-to-one with their own
 `TypeId`, `Kind`, and per-world `ComponentId`.
 
-Behavior derives can normally generate this implementation themselves. If a
+Manual component implementations place `KIND` and `KIND_NAME` on
+`SemanticType`, then add an empty `SemanticComponent` implementation. Behavior
+derives can normally generate both implementations themselves. If a
 type intentionally lists both derives, add the explicit `standalone` marker so
 the behavior derive defers to this derive:
 

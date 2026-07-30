@@ -14,6 +14,7 @@ pub mod kind;
 pub mod query;
 pub mod registry;
 pub mod semantic_component;
+pub mod semantic_type;
 pub mod snapshot;
 
 pub mod plugin;
@@ -33,7 +34,9 @@ pub mod prelude {
     pub use crate::registry::{Core, SemanticRegistry, SemanticRegistryBatch};
     pub use crate::semantic_component::{SemanticAppExt, SemanticComponents, SemanticWorldExt};
     pub use crate::snapshot::SemanticSnapshot;
-    pub use crate::{kind, semantic_component, semantic_kinds, SemanticComponent};
+    pub use crate::{
+        kind, semantic_component, semantic_kinds, semantic_type, SemanticComponent, SemanticType,
+    };
 }
 
 pub use direction::EdgeDirection;
@@ -48,13 +51,16 @@ pub use registry::{Core, SemanticRegistry, SemanticRegistryBatch};
 pub use semantic_component::{
     SemanticAppExt, SemanticComponent, SemanticComponents, SemanticWorldExt,
 };
+pub use semantic_type::SemanticType;
 pub use snapshot::SemanticSnapshot;
 
 pub use plugin::{CommandsExt, SemanticEdit, SemanticPlaybackQueue, Semantics, SemanticsPlugin};
 
 #[doc(hidden)]
 pub use bevy_semantics_derive::__kind_raw;
-pub use bevy_semantics_derive::{semantic_component, SemanticComponent};
+pub use bevy_semantics_derive::{
+    semantic_component, semantic_type, SemanticComponent, SemanticType,
+};
 
 /// Construct a stable semantic [`Kind`] from a string literal at compile time.
 #[macro_export]
